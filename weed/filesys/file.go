@@ -63,10 +63,12 @@ func (file *File) Attr(ctx context.Context, attr *fuse.Attr) (err error) {
 	attr.Valid = time.Second
 	attr.Mode = os.FileMode(entry.Attributes.FileMode)
 	attr.Size = filer.FileSize(entry)
+	file.wfs.handlesLock.Lock()
 	if file.isOpen > 0 {
 		attr.Size = entry.Attributes.FileSize
 		glog.V(4).Infof("file Attr %s, open:%v, size: %d", file.fullpath(), file.isOpen, attr.Size)
 	}
+	file.wfs.handlesLock.Unlock()
 	attr.Crtime = time.Unix(entry.Attributes.Crtime, 0)
 	attr.Mtime = time.Unix(entry.Attributes.Mtime, 0)
 	attr.Gid = entry.Attributes.Gid
@@ -173,10 +175,12 @@ func (file *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *f
 	if req.Valid.Handle() {
 		// fmt.Printf("file handle => %d\n", req.Handle)
 	}
-
+	file.wfs.handlesLock.Lock()
 	if file.isOpen > 0 {
+		file.wfs.handlesLock.Unlock()
 		return nil
 	}
+	file.wfs.handlesLock.Unlock()
 
 	if !file.dirtyMetadata {
 		return nil
@@ -199,10 +203,12 @@ func (file *File) Setxattr(ctx context.Context, req *fuse.SetxattrRequest) error
 		return err
 	}
 	file.dirtyMetadata = true
-
+	file.wfs.handlesLock.Lock()
 	if file.isOpen > 0 {
+		file.wfs.handlesLock.Unlock()
 		return nil
 	}
+	file.wfs.handlesLock.Unlock()
 
 	return file.saveEntry(entry)
 
@@ -221,10 +227,12 @@ func (file *File) Removexattr(ctx context.Context, req *fuse.RemovexattrRequest)
 		return err
 	}
 	file.dirtyMetadata = true
-
+	file.wfs.handlesLock.Lock()
 	if file.isOpen > 0 {
+		file.wfs.handlesLock.Unlock()
 		return nil
 	}
+	file.wfs.handlesLock.Unlock()
 
 	return file.saveEntry(entry)
 
@@ -272,6 +280,28 @@ func (file *File) maybeLoadEntry(ctx context.Context) (entry *filer_pb.Entry, er
 		entry = handle.f.entry
 	}
 
+	if entry != nil {
+		if len(entry.HardLinkId) == 0 {
+			// only always reload hard link
+			return entry, nil
+		}
+	}
+	entry, err = file.wfs.maybeLoadEntry(file.dir.FullPath(), file.Name)
+	if err != nil {
+		glog.V(3).Infof("maybeLoadEntry file %s/%s: %v", file.dir.FullPath(), file.Name, err)
+		return entry, err
+	}
+	if entry != nil {
+		// file.entry = entry
+	} else {
+		glog.Warningf("maybeLoadEntry not found entry %s/%s: %v", file.dir.FullPath(), file.Name, err)
+	}
+	return entry, nil
+}
+
+func (file *File) loadEntry(ctx context.Context) (entry *filer_pb.Entry, err error) {
+
+	entry = file.entry
 	if entry != nil {
 		if len(entry.HardLinkId) == 0 {
 			// only always reload hard link

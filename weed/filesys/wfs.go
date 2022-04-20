@@ -156,23 +156,19 @@ func (wfs *WFS) AcquireHandle(file *File, uid, gid uint32) (fileHandle *FileHand
 	inodeId := file.Id()
 
 	wfs.handlesLock.Lock()
+	defer wfs.handlesLock.Unlock()
 	existingHandle, found := wfs.handles[inodeId]
-	if found && existingHandle != nil && existingHandle.f.isOpen > 0 {
-		existingHandle.f.isOpen++
-		wfs.handlesLock.Unlock()
-		glog.V(4).Infof("Reuse AcquiredHandle %s open %d", fullpath, existingHandle.f.isOpen)
-		return existingHandle
+	if found && existingHandle != nil && existingHandle.f.isOpen > 0{
+			existingHandle.f.isOpen++
+			glog.V(4).Infof("Reuse AcquiredHandle %s open %d", fullpath, existingHandle.f.isOpen)
+			return existingHandle
 	}
-	wfs.handlesLock.Unlock()
 
-	entry, _ := file.maybeLoadEntry(context.Background())
+	entry, _ := file.loadEntry(context.Background())
 	file.entry = entry
 	fileHandle = newFileHandle(file, uid, gid)
-
-	wfs.handlesLock.Lock()
 	file.isOpen++
 	wfs.handles[inodeId] = fileHandle
-	wfs.handlesLock.Unlock()
 	fileHandle.handle = inodeId
 
 	glog.V(4).Infof("Acquired new Handle %s open %d", fullpath, file.isOpen)
@@ -183,6 +179,14 @@ func (wfs *WFS) ReleaseHandle(fullpath util.FullPath, handleId fuse.HandleID) {
 	wfs.handlesLock.Lock()
 	defer wfs.handlesLock.Unlock()
 
+	glog.V(4).Infof("ReleaseHandle %s id %d current handles length %d", fullpath, handleId, len(wfs.handles))
+
+	delete(wfs.handles, uint64(handleId))
+
+	return
+}
+
+func (wfs *WFS) ReleaseHandleWithOutLock(fullpath util.FullPath, handleId fuse.HandleID) {
 	glog.V(4).Infof("ReleaseHandle %s id %d current handles length %d", fullpath, handleId, len(wfs.handles))
 
 	delete(wfs.handles, uint64(handleId))

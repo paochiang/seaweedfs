@@ -11,7 +11,7 @@ binary:
 
 build: binary
 	docker build --no-cache -t chrislusf/seaweedfs:local -f Dockerfile.local .
-	rm ./weed
+	#rm ./weed
 
 build_gorocksdb:
 	docker build --no-cache -t chrislusf/gorocksdb -f Dockerfile.go_rocksdb .

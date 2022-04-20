@@ -28,6 +28,10 @@ type FileHandle struct {
 	sync.Mutex
 	sync.WaitGroup
 
+	//releaseLock sync.Mutex
+	//releaseCount int
+
+	//openLock  sync.Mutex
 	f         *File
 	RequestId fuse.RequestID // unique ID for request
 	NodeId    fuse.NodeID    // file or directory the request is about
@@ -62,10 +66,8 @@ var _ = fs.HandleWriter(&FileHandle{})
 var _ = fs.HandleReleaser(&FileHandle{})
 
 func (fh *FileHandle) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) error {
-
 	fh.Add(1)
 	defer fh.Done()
-
 	fh.Lock()
 	defer fh.Unlock()
 
@@ -216,19 +218,18 @@ func (fh *FileHandle) Write(ctx context.Context, req *fuse.WriteRequest, resp *f
 func (fh *FileHandle) Release(ctx context.Context, req *fuse.ReleaseRequest) error {
 
 	glog.V(4).Infof("Release %v fh %d open=%d", fh.f.fullpath(), fh.handle, fh.f.isOpen)
-
 	fh.Wait()
 
 	fh.f.wfs.handlesLock.Lock()
+	defer fh.f.wfs.handlesLock.Unlock()
 	fh.f.isOpen--
-	fh.f.wfs.handlesLock.Unlock()
 
 	if fh.f.isOpen <= 0 {
 		fh.f.entry = nil
 		fh.entryViewCache = nil
 		fh.reader = nil
 
-		fh.f.wfs.ReleaseHandle(fh.f.fullpath(), fuse.HandleID(fh.handle))
+		fh.f.wfs.ReleaseHandleWithOutLock(fh.f.fullpath(), fuse.HandleID(fh.handle))
 		fh.dirtyPages.Destroy()
 	}
 
