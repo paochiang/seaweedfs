@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/chrislusf/seaweedfs/weed/glog"
 	"github.com/chrislusf/seaweedfs/weed/operation"
@@ -19,11 +20,12 @@ import (
 	"github.com/chrislusf/seaweedfs/weed/util"
 )
 
-func ReplicatedWrite(masterFn operation.GetMasterFn, grpcDialOption grpc.DialOption, s *storage.Store, volumeId needle.VolumeId, n *needle.Needle, r *http.Request) (isUnchanged bool, err error) {
-
+func ReplicatedWrite(masterFn operation.GetMasterFn, grpcDialOption grpc.DialOption, s *storage.Store,
+	volumeId needle.VolumeId, n *needle.Needle, r *http.Request, tmpId, vid, fid string) (isUnchanged bool, err error) {
 	//check JWT
 	jwt := security.GetJwt(r)
-
+	fmt.Println(time.Now().Format(time.StampMilli), "id:", tmpId, "r1 vid:", vid, "fid:", fid,
+		":进入ReplicatedWrite")
 	// check whether this is a replicated write request
 	var remoteLocations []operation.Location
 	if r.FormValue("type") != "replicate" {
@@ -34,7 +36,8 @@ func ReplicatedWrite(masterFn operation.GetMasterFn, grpcDialOption grpc.DialOpt
 			return
 		}
 	}
-
+	fmt.Println(time.Now().Format(time.StampMilli), "id:", tmpId, "r2 vid:", vid, "fid:", fid,
+		":准备WriteVolumeNeedle")
 	// read fsync value
 	fsync := false
 	if r.FormValue("fsync") == "true" {
@@ -51,7 +54,10 @@ func ReplicatedWrite(masterFn operation.GetMasterFn, grpcDialOption grpc.DialOpt
 	}
 
 	if len(remoteLocations) > 0 { //send to other replica locations
+		fmt.Println(time.Now().Format(time.StampMilli), "id:", tmpId, "r3 vid:", vid, "fid:", fid,
+			":准备DistributedOperation")
 		if err = DistributedOperation(remoteLocations, func(location operation.Location) error {
+			fmt.Println(time.Now().Format(time.StampMilli), "id:", tmpId, "r3-1 vid:", vid, "fid:", fid, ":stage1")
 			u := url.URL{
 				Scheme: "http",
 				Host:   location.Url,
@@ -68,7 +74,7 @@ func ReplicatedWrite(masterFn operation.GetMasterFn, grpcDialOption grpc.DialOpt
 				q.Set("cm", "true")
 			}
 			u.RawQuery = q.Encode()
-
+			fmt.Println(time.Now().Format(time.StampMilli), "id:", tmpId, "r3-2 vid:", vid, "fid:", fid, ":stage2")
 			pairMap := make(map[string]string)
 			if n.HasPairs() {
 				tmpMap := make(map[string]string)
@@ -80,7 +86,6 @@ func ReplicatedWrite(masterFn operation.GetMasterFn, grpcDialOption grpc.DialOpt
 					pairMap[needle.PairNamePrefix+k] = v
 				}
 			}
-
 			// volume server do not know about encryption
 			// TODO optimize here to compress data only once
 			uploadOption := &operation.UploadOption{
@@ -92,13 +97,17 @@ func ReplicatedWrite(masterFn operation.GetMasterFn, grpcDialOption grpc.DialOpt
 				PairMap:           pairMap,
 				Jwt:               jwt,
 			}
+			fmt.Println(time.Now().Format(time.StampMilli), "id:", tmpId, "r3-3 vid:", vid, "fid:", fid, ":stage3")
 			_, err := operation.UploadData(n.Data, uploadOption)
+			fmt.Println(time.Now().Format(time.StampMilli), "id:", tmpId, "r3-4 vid:", vid, "fid:", fid, ":finish")
 			return err
 		}); err != nil {
 			err = fmt.Errorf("failed to write to replicas for volume %d: %v", volumeId, err)
 			glog.V(0).Infoln(err)
 		}
 	}
+	fmt.Println(time.Now().Format(time.StampMilli), "id:", tmpId, "r4 vid:", vid, "fid:", fid,
+		":完成ReplicatedWrite")
 	return
 }
 

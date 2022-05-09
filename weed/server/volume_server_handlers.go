@@ -1,10 +1,13 @@
 package weed_server
 
 import (
+	"fmt"
+	"math/rand"
 	"net/http"
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/chrislusf/seaweedfs/weed/util"
 
@@ -48,11 +51,18 @@ func (vs *VolumeServer) privateStoreHandler(w http.ResponseWriter, r *http.Reque
 		stats.DeleteRequest()
 		vs.guard.WhiteList(vs.DeleteHandler)(w, r)
 	case "PUT", "POST":
-
+		//检查这里的大小
 		// wait until in flight data is less than the limit
 		contentLength := getContentLength(r)
+		tmpId := strconv.Itoa(rand.Intn(10000000))
+		fmt.Println("--------------------")
+		vid, fid, _, _, _ := parseURLPath(r.URL.Path)
+		fmt.Println(time.Now().Format(time.StampMilli), "id:", tmpId, "top vid:", vid, "fid:", fid, ",当前上传大小",
+			contentLength)
 		vs.inFlightUploadDataLimitCond.L.Lock()
 		for vs.concurrentUploadLimit != 0 && atomic.LoadInt64(&vs.inFlightUploadDataSize) > vs.concurrentUploadLimit {
+			fmt.Println(time.Now().Format(time.StampMilli), "id:", tmpId, "top vid:", vid, "fid:", fid, "等待中,inflight:",
+				vs.inFlightUploadDataSize, ",limit:", vs.concurrentUploadLimit)
 			glog.V(4).Infof("wait because inflight upload data %d > %d", vs.inFlightUploadDataSize, vs.concurrentUploadLimit)
 			vs.inFlightUploadDataLimitCond.Wait()
 		}
@@ -62,6 +72,10 @@ func (vs *VolumeServer) privateStoreHandler(w http.ResponseWriter, r *http.Reque
 			atomic.AddInt64(&vs.inFlightUploadDataSize, -contentLength)
 			vs.inFlightUploadDataLimitCond.Signal()
 		}()
+
+		org := r.URL.Query()
+		org.Add("iid", tmpId)
+		r.URL.RawQuery = org.Encode()
 
 		// processs uploads
 		stats.WriteRequest()

@@ -17,7 +17,10 @@ import (
 )
 
 func (vs *VolumeServer) PostHandler(w http.ResponseWriter, r *http.Request) {
+	vid, fid, _, _, _ := parseURLPath(r.URL.Path)
 
+	tmpId := r.URL.Query().Get("iid")
+	fmt.Println(time.Now().Format(time.StampMilli), "id:", tmpId, "p1 vid:", vid, "fid:", fid, ":进入PostHandler")
 	stats.VolumeServerRequestCounter.WithLabelValues("post").Inc()
 	start := time.Now()
 	defer func() {
@@ -30,7 +33,6 @@ func (vs *VolumeServer) PostHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	vid, fid, _, _, _ := parseURLPath(r.URL.Path)
 	volumeId, ve := needle.NewVolumeId(vid)
 	if ve != nil {
 		glog.V(0).Infoln("NewVolumeId error:", ve)
@@ -46,15 +48,21 @@ func (vs *VolumeServer) PostHandler(w http.ResponseWriter, r *http.Request) {
 	bytesBuffer := bufPool.Get().(*bytes.Buffer)
 	defer bufPool.Put(bytesBuffer)
 
+	fmt.Println(time.Now().Format(time.StampMilli), "id:", tmpId, "p2 vid:", vid, "fid:", fid,
+		":准备needle.CreateNeedleFromRequest")
 	reqNeedle, originalSize, contentMd5, ne := needle.CreateNeedleFromRequest(r, vs.FixJpgOrientation, vs.fileSizeLimitBytes, bytesBuffer)
 	if ne != nil {
 		writeJsonError(w, r, http.StatusBadRequest, ne)
 		return
 	}
 
+	fmt.Println(time.Now().Format(time.StampMilli), "id:", tmpId, "p3 vid:", vid, "fid:", fid,
+		":准备topology.ReplicatedWrite")
 	ret := operation.UploadResult{}
-	isUnchanged, writeError := topology.ReplicatedWrite(vs.GetMaster, vs.grpcDialOption, vs.store, volumeId, reqNeedle, r)
+	isUnchanged, writeError := topology.ReplicatedWrite(vs.GetMaster, vs.grpcDialOption, vs.store, volumeId,
+		reqNeedle, r, tmpId, vid, fid)
 
+	fmt.Println(time.Now().Format(time.StampMilli), "id:", tmpId, "p4 vid:", vid, "fid:", fid, ":准备return http")
 	// http 204 status code does not allow body
 	if writeError == nil && isUnchanged {
 		setEtag(w, reqNeedle.Etag())
@@ -76,6 +84,7 @@ func (vs *VolumeServer) PostHandler(w http.ResponseWriter, r *http.Request) {
 	setEtag(w, ret.ETag)
 	w.Header().Set("Content-MD5", contentMd5)
 	writeJsonQuiet(w, r, httpStatus, ret)
+	fmt.Println(time.Now().Format(time.StampMilli), "id:", tmpId, "p5 vid:", vid, "fid:", fid, ", 退出PostHandler")
 }
 
 func (vs *VolumeServer) DeleteHandler(w http.ResponseWriter, r *http.Request) {
