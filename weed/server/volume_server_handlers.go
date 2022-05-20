@@ -49,14 +49,17 @@ func (vs *VolumeServer) privateStoreHandler(w http.ResponseWriter, r *http.Reque
 		vs.guard.WhiteList(vs.DeleteHandler)(w, r)
 	case "PUT", "POST":
 
-		// wait until in flight data is less than the limit
 		contentLength := getContentLength(r)
-		vs.inFlightUploadDataLimitCond.L.Lock()
-		for vs.concurrentUploadLimit != 0 && atomic.LoadInt64(&vs.inFlightUploadDataSize) > vs.concurrentUploadLimit {
-			glog.V(4).Infof("wait because inflight upload data %d > %d", vs.inFlightUploadDataSize, vs.concurrentUploadLimit)
-			vs.inFlightUploadDataLimitCond.Wait()
+		// exclude the replication from the concurrentUploadLimitMB
+		if r.URL.Query().Get("type") != "replicate" { //Non-Replication
+			vs.inFlightUploadDataLimitCond.L.Lock()
+			for vs.concurrentUploadLimit != 0 && atomic.LoadInt64(&vs.inFlightUploadDataSize) > vs.concurrentUploadLimit {
+				glog.V(4).Infof("wait because inflight upload data %d > %d", vs.inFlightUploadDataSize, vs.concurrentUploadLimit)
+				vs.inFlightUploadDataLimitCond.Wait()
+			}
+			vs.inFlightUploadDataLimitCond.L.Unlock()
 		}
-		vs.inFlightUploadDataLimitCond.L.Unlock()
+
 		atomic.AddInt64(&vs.inFlightUploadDataSize, contentLength)
 		defer func() {
 			atomic.AddInt64(&vs.inFlightUploadDataSize, -contentLength)
