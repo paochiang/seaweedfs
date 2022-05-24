@@ -27,7 +27,6 @@ func (fs *FilerServer) SubscribeMetadata(req *filer_pb.SubscribeMetadataRequest,
 	if alreadyKnown {
 		return fmt.Errorf("duplicated subscription detected for client %s id %d", clientName, req.ClientId)
 	}
-
 	defer fs.deleteClient(clientName, req.ClientId)
 
 	lastReadTime := time.Unix(0, req.SinceNs)
@@ -64,7 +63,6 @@ func (fs *FilerServer) SubscribeMetadata(req *filer_pb.SubscribeMetadataRequest,
 		}, eachLogEntryFn)
 		if readInMemoryLogErr != nil {
 			if readInMemoryLogErr == log_buffer.ResumeFromDiskError {
-				time.Sleep(1127 * time.Millisecond)
 				continue
 			}
 			glog.Errorf("processed to %v: %v", lastReadTime, readInMemoryLogErr)
@@ -128,7 +126,6 @@ func (fs *FilerServer) SubscribeLocalMetadata(req *filer_pb.SubscribeMetadataReq
 			return true
 		}, eachLogEntryFn)
 		if readInMemoryLogErr != nil {
-			time.Sleep(1127 * time.Millisecond)
 			if readInMemoryLogErr == log_buffer.ResumeFromDiskError {
 				continue
 			}
