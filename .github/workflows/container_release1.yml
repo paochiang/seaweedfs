@@ -20,7 +20,7 @@ jobs:
         uses: docker/metadata-action@v3
         with:
           images: |
-            chrislusf/seaweedfs
+            paochiang/seaweedfs
           tags: |
             type=ref,event=tag
           flavor: |
@@ -48,7 +48,7 @@ jobs:
         with:
           context: ./docker
           push: ${{ github.event_name != 'pull_request' }}
-          file: ./docker/Dockerfile.go_build
+          file: ./docker/Dockerfile.go_build_paochiang
           platforms: linux/amd64, linux/arm, linux/arm64, linux/386
           tags: ${{ steps.docker_meta.outputs.tags }}
           labels: ${{ steps.docker_meta.outputs.labels }}
