@@ -4,8 +4,9 @@ on:
   push:
     tags:
       - '*'
-  workflow_dispatch: []
-
+#  workflow_dispatch: []
+#permissions:
+#  contents: read
 jobs:
   build-default-release-container:
     runs-on: [ubuntu-latest]
