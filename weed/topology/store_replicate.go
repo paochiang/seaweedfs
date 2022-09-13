@@ -100,12 +100,25 @@ func ReplicatedWrite(masterFn operation.GetMasterFn, grpcDialOption grpc.DialOpt
 				PairMap:           pairMap,
 				Jwt:               jwt,
 			}
-			uploadResult, err := operation.UploadData(n.Data, uploadOption)
-			if contentMd5 != uploadResult.ContentMd5 {
-				glog.Errorf("inconsistent MD5", "src", contentMd5, "dst", uploadResult.ContentMd5)
-				err = fmt.Errorf("inconsistent MD5")
+			i := 0
+			var finalErr error
+			for {
+				i++
+				if i > 3 {
+					return finalErr
+				}
+				uploadResult, err := operation.UploadData(n.Data, uploadOption)
+				finalErr = err
+				if err != nil {
+					glog.Errorf("operation-UploadData,retry:%d, err:%v, URI:%s", i, err, r.RequestURI)
+					continue
+				}
+				if contentMd5 != uploadResult.ContentMd5 {
+					glog.Errorf("inconsistent MD5, src:%s, dst:%s, retry:%d, URI:%s", contentMd5,
+						uploadResult.ContentMd5, i, r.RequestURI)
+					finalErr = fmt.Errorf("inconsistent MD5")
+				}
 			}
-			return err
 		})
 		stats.VolumeServerRequestHistogram.WithLabelValues(stats.WriteToReplicas).Observe(time.Since(start).Seconds())
 		if err != nil {
