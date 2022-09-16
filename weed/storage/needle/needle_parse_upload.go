@@ -97,6 +97,22 @@ func ParseUpload(r *http.Request, sizeLimit int64, bytesBuffer *bytes.Buffer) (p
 		}
 	}
 
+	if md5sum, found := pu.PairMap[PairNamePrefix+"Md5"]; found {
+		if md5sum != pu.ContentMd5 {
+			glog.Errorf("ParsedUpload-md5,pu.PairMap:%s, pu.ContentMd5:%s, URI:%s", md5sum, pu.ContentMd5, r.RequestURI)
+			e = fmt.Errorf("MD5 did not match md5 of file data expected [%s] received [%s] size %d", md5sum, pu.ContentMd5, len(pu.UncompressedData))
+			return
+		}
+	}
+
+	if crc, found := pu.PairMap[PairNamePrefix+"Crc"]; found {
+		if crc != fmt.Sprintf("%x", NewCRC(pu.Data)) {
+			glog.Errorf("ParsedUpload-crc,pu.PairMap:%s, newcrc(pu.Data):%s, URI:%s", crc, fmt.Sprintf("%x", NewCRC(pu.Data)), r.RequestURI)
+			e = fmt.Errorf("CRC did not match crc of file data expected [%s] received [%x] size %d", crc, NewCRC(pu.Data), len(pu.UncompressedData))
+			return
+		}
+	}
+
 	return
 }
 

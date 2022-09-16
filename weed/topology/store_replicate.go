@@ -4,12 +4,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"google.golang.org/grpc"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
+
+	"google.golang.org/grpc"
 
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"github.com/seaweedfs/seaweedfs/weed/operation"
@@ -100,6 +101,7 @@ func ReplicatedWrite(masterFn operation.GetMasterFn, grpcDialOption grpc.DialOpt
 				PairMap:           pairMap,
 				Jwt:               jwt,
 			}
+
 			i := 0
 			var finalErr error
 			for {
@@ -111,7 +113,7 @@ func ReplicatedWrite(masterFn operation.GetMasterFn, grpcDialOption grpc.DialOpt
 				finalErr = err
 				if err != nil {
 					glog.Errorf("operation-UploadData,retry:%d, err:%v, URI:%s", i, err, r.RequestURI)
-					continue
+					return err
 				}
 				if contentMd5 != uploadResult.ContentMd5 {
 					glog.Errorf("inconsistent MD5, src:%s, dst:%s, retry:%d, URI:%s", contentMd5,
@@ -119,8 +121,9 @@ func ReplicatedWrite(masterFn operation.GetMasterFn, grpcDialOption grpc.DialOpt
 					finalErr = fmt.Errorf("inconsistent MD5")
 					continue
 				}
-				return nil
+				break
 			}
+			return finalErr
 		})
 		stats.VolumeServerRequestHistogram.WithLabelValues(stats.WriteToReplicas).Observe(time.Since(start).Seconds())
 		if err != nil {
