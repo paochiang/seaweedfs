@@ -282,8 +282,6 @@ func upload_content(fillBufferFunction func(w io.Writer) error, originalDataSize
 	var ret UploadResult
 	etag := getEtag(resp)
 	if resp.StatusCode == http.StatusNoContent {
-		ret.ContentMd5 = resp.Header.Get("Content-MD5")
-		ret.ContentMd5Diy = resp.Header.Get("Content-MD5-Diy")
 		ret.ETag = etag
 		return &ret, nil
 	}
@@ -303,7 +301,6 @@ func upload_content(fillBufferFunction func(w io.Writer) error, originalDataSize
 	}
 	ret.ETag = etag
 	ret.ContentMd5 = resp.Header.Get("Content-MD5")
-	ret.ContentMd5Diy = resp.Header.Get("Content-MD5-Diy")
 	return &ret, nil
 }
 

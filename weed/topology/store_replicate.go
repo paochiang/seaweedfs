@@ -1,6 +1,8 @@
 package topology
 
 import (
+	"crypto/md5"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,7 +23,7 @@ import (
 	"github.com/seaweedfs/seaweedfs/weed/util"
 )
 
-func ReplicatedWrite(masterFn operation.GetMasterFn, grpcDialOption grpc.DialOption, s *storage.Store, volumeId needle.VolumeId, n *needle.Needle, r *http.Request, contentMd5, contentMd5Diy string) (isUnchanged bool, err error) {
+func ReplicatedWrite(masterFn operation.GetMasterFn, grpcDialOption grpc.DialOption, s *storage.Store, volumeId needle.VolumeId, n *needle.Needle, r *http.Request, contentMd5 string) (isUnchanged bool, err error) {
 
 	//check JWT
 	jwt := security.GetJwt(r)
@@ -88,6 +90,9 @@ func ReplicatedWrite(masterFn operation.GetMasterFn, grpcDialOption grpc.DialOpt
 				}
 			}
 
+			pairMap[needle.PairNamePrefix+"Crc"] = fmt.Sprintf("%x", needle.NewCRC(n.Data))
+			pairMap[needle.PairNamePrefix+"Md5"] = contentMd5
+
 			// volume server do not know about encryption
 			// TODO optimize here to compress data only once
 			uploadOption := &operation.UploadOption{
@@ -99,12 +104,33 @@ func ReplicatedWrite(masterFn operation.GetMasterFn, grpcDialOption grpc.DialOpt
 				PairMap:           pairMap,
 				Jwt:               jwt,
 			}
+			//发送其他volume前，检查下n.Data内容是否改变
+			preCheckMd5 := ""
+			hm := md5.New()
+			if n.IsCompressed() {
+				if unzipped, e := util.DecompressData(n.Data); e == nil {
+					hm.Write(unzipped)
+					preCheckMd5 = base64.StdEncoding.EncodeToString(hm.Sum(nil))
+					if preCheckMd5 != contentMd5 {
+						glog.Errorf("inconsistent-precheck md5, preCheckMd5:%s, src:%s, url:%s", preCheckMd5, contentMd5, u.String())
+					}
+				} else {
+					glog.Errorf("DecompressData-error, src:%s, url:%s, err;%v", contentMd5, u.String(), e)
+				}
+			} else {
+				hm.Write(n.Data)
+				preCheckMd5 = base64.StdEncoding.EncodeToString(hm.Sum(nil))
+				if preCheckMd5 != contentMd5 {
+					glog.Errorf("inconsistent-precheck md5, preCheckMd5:%s, src:%s, url:%s", preCheckMd5, contentMd5, u.String())
+				}
+			}
+
 			uploadResult, err := operation.UploadData(n.Data, uploadOption)
 			if err != nil {
-				glog.Errorf("operation-UploadData, err:%v, URI:%s", err, r.RequestURI)
-			} else if contentMd5 != uploadResult.ContentMd5 {
-				glog.Errorf("inconsistent MD5, src:%s, dst:%s, URI:%s, srcMd5diy:%s, dstMd5diy:%s", contentMd5,
-					uploadResult.ContentMd5, r.RequestURI, contentMd5Diy, uploadResult.ContentMd5Diy)
+				glog.Errorf("operation-UploadData, err:%v, url:%s", err, u.String())
+			} else if uploadResult.ContentMd5 != "" && contentMd5 != uploadResult.ContentMd5 {
+				glog.Errorf("inconsistent-md5, src:%s, dst:%s, preCheckMd5:%s, url:%s", contentMd5,
+					uploadResult.ContentMd5, preCheckMd5, u.String(), r.URL)
 			}
 			return err
 		})

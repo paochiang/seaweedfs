@@ -64,6 +64,7 @@ func (vs *VolumeServer) privateStoreHandler(w http.ResponseWriter, r *http.Reque
 		contentLength := getContentLength(r)
 		// exclude the replication from the concurrentUploadLimitMB
 		if r.URL.Query().Get("type") != "replicate" && vs.concurrentUploadLimit != 0 {
+			glog.V(0).Infof("main-volume, url:%s:%s", r.URL.Host, r.URL.Path)
 			startTime := time.Now()
 			vs.inFlightUploadDataLimitCond.L.Lock()
 			for vs.inFlightUploadDataSize > vs.concurrentUploadLimit {

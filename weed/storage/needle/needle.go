@@ -2,8 +2,6 @@ package needle
 
 import (
 	"bytes"
-	"crypto/md5"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -51,22 +49,17 @@ func (n *Needle) String() (str string) {
 	return
 }
 
-func CreateNeedleFromRequest(r *http.Request, fixJpgOrientation bool, sizeLimit int64, bytesBuffer *bytes.Buffer) (n *Needle, originalSize int, contentMd5, contentMd5Diy string, e error) {
+func CreateNeedleFromRequest(r *http.Request, fixJpgOrientation bool, sizeLimit int64, bytesBuffer *bytes.Buffer) (n *Needle, originalSize int, contentMd5 string, e error) {
 	n = new(Needle)
 	pu, e := ParseUpload(r, sizeLimit, bytesBuffer)
 	if e != nil {
 		return
 	}
 	n.Data = pu.Data
-	//my md5
-	hm := md5.New()
-	hm.Write(pu.Data)
-	pu.ContentMd5Diy = base64.StdEncoding.EncodeToString(hm.Sum(nil))
 	originalSize = pu.OriginalDataSize
 	n.LastModified = pu.ModifiedTime
 	n.Ttl = pu.Ttl
 	contentMd5 = pu.ContentMd5
-	contentMd5Diy = pu.ContentMd5Diy
 
 	if len(pu.FileName) < 256 {
 		n.Name = []byte(pu.FileName)
