@@ -31,15 +31,16 @@ type UploadOption struct {
 }
 
 type UploadResult struct {
-	Name       string `json:"name,omitempty"`
-	Size       uint32 `json:"size,omitempty"`
-	Error      string `json:"error,omitempty"`
-	ETag       string `json:"eTag,omitempty"`
-	CipherKey  []byte `json:"cipherKey,omitempty"`
-	Mime       string `json:"mime,omitempty"`
-	Gzip       uint32 `json:"gzip,omitempty"`
-	ContentMd5 string `json:"contentMd5,omitempty"`
-	RetryCount int    `json:"-"`
+	Name          string `json:"name,omitempty"`
+	Size          uint32 `json:"size,omitempty"`
+	Error         string `json:"error,omitempty"`
+	ETag          string `json:"eTag,omitempty"`
+	CipherKey     []byte `json:"cipherKey,omitempty"`
+	Mime          string `json:"mime,omitempty"`
+	Gzip          uint32 `json:"gzip,omitempty"`
+	ContentMd5    string `json:"contentMd5,omitempty"`
+	RetryCount    int    `json:"-"`
+	ContentMd5Diy string `json:"contentMd5Diy,omitempty"`
 }
 
 func (uploadResult *UploadResult) ToPbFileChunk(fileId string, offset int64) *filer_pb.FileChunk {
@@ -281,6 +282,8 @@ func upload_content(fillBufferFunction func(w io.Writer) error, originalDataSize
 	var ret UploadResult
 	etag := getEtag(resp)
 	if resp.StatusCode == http.StatusNoContent {
+		ret.ContentMd5 = resp.Header.Get("Content-MD5")
+		ret.ContentMd5Diy = resp.Header.Get("Content-MD5-Diy")
 		ret.ETag = etag
 		return &ret, nil
 	}
@@ -300,6 +303,7 @@ func upload_content(fillBufferFunction func(w io.Writer) error, originalDataSize
 	}
 	ret.ETag = etag
 	ret.ContentMd5 = resp.Header.Get("Content-MD5")
+	ret.ContentMd5Diy = resp.Header.Get("Content-MD5-Diy")
 	return &ret, nil
 }
 

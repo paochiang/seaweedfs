@@ -38,18 +38,20 @@ func (vs *VolumeServer) PostHandler(w http.ResponseWriter, r *http.Request) {
 	bytesBuffer := bufPool.Get().(*bytes.Buffer)
 	defer bufPool.Put(bytesBuffer)
 
-	reqNeedle, originalSize, contentMd5, ne := needle.CreateNeedleFromRequest(r, vs.FixJpgOrientation, vs.fileSizeLimitBytes, bytesBuffer)
+	reqNeedle, originalSize, contentMd5, contentMd5Diy, ne := needle.CreateNeedleFromRequest(r, vs.FixJpgOrientation, vs.fileSizeLimitBytes, bytesBuffer)
 	if ne != nil {
 		writeJsonError(w, r, http.StatusBadRequest, ne)
 		return
 	}
 
 	ret := operation.UploadResult{}
-	isUnchanged, writeError := topology.ReplicatedWrite(vs.GetMaster, vs.grpcDialOption, vs.store, volumeId, reqNeedle, r)
+	isUnchanged, writeError := topology.ReplicatedWrite(vs.GetMaster, vs.grpcDialOption, vs.store, volumeId, reqNeedle, r, contentMd5, contentMd5Diy)
 
 	// http 204 status code does not allow body
 	if writeError == nil && isUnchanged {
 		setEtag(w, reqNeedle.Etag())
+		w.Header().Set("Content-MD5", contentMd5)
+		w.Header().Set("Content-MD5-Diy", contentMd5Diy)
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -67,6 +69,7 @@ func (vs *VolumeServer) PostHandler(w http.ResponseWriter, r *http.Request) {
 	ret.Mime = string(reqNeedle.Mime)
 	setEtag(w, ret.ETag)
 	w.Header().Set("Content-MD5", contentMd5)
+	w.Header().Set("Content-MD5-Diy", contentMd5Diy)
 	writeJsonQuiet(w, r, httpStatus, ret)
 }
 

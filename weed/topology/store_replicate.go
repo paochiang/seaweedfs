@@ -21,7 +21,7 @@ import (
 	"github.com/seaweedfs/seaweedfs/weed/util"
 )
 
-func ReplicatedWrite(masterFn operation.GetMasterFn, grpcDialOption grpc.DialOption, s *storage.Store, volumeId needle.VolumeId, n *needle.Needle, r *http.Request) (isUnchanged bool, err error) {
+func ReplicatedWrite(masterFn operation.GetMasterFn, grpcDialOption grpc.DialOption, s *storage.Store, volumeId needle.VolumeId, n *needle.Needle, r *http.Request, contentMd5, contentMd5Diy string) (isUnchanged bool, err error) {
 
 	//check JWT
 	jwt := security.GetJwt(r)
@@ -99,7 +99,13 @@ func ReplicatedWrite(masterFn operation.GetMasterFn, grpcDialOption grpc.DialOpt
 				PairMap:           pairMap,
 				Jwt:               jwt,
 			}
-			_, err := operation.UploadData(n.Data, uploadOption)
+			uploadResult, err := operation.UploadData(n.Data, uploadOption)
+			if err != nil {
+				glog.Errorf("operation-UploadData, err:%v, URI:%s", err, r.RequestURI)
+			} else if contentMd5 != uploadResult.ContentMd5 {
+				glog.Errorf("inconsistent MD5, src:%s, dst:%s, URI:%s, srcMd5diy:%s, dstMd5diy:%s", contentMd5,
+					uploadResult.ContentMd5, r.RequestURI, contentMd5Diy, uploadResult.ContentMd5Diy)
+			}
 			return err
 		})
 		stats.VolumeServerRequestHistogram.WithLabelValues(stats.WriteToReplicas).Observe(time.Since(start).Seconds())

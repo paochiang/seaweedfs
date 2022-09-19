@@ -31,6 +31,7 @@ type ParsedUpload struct {
 	IsChunkedFile    bool
 	UncompressedData []byte
 	ContentMd5       string
+	ContentMd5Diy    string
 }
 
 func ParseUpload(r *http.Request, sizeLimit int64, bytesBuffer *bytes.Buffer) (pu *ParsedUpload, e error) {
@@ -94,6 +95,18 @@ func ParseUpload(r *http.Request, sizeLimit int64, bytesBuffer *bytes.Buffer) (p
 		if expectedChecksum != pu.ContentMd5 {
 			e = fmt.Errorf("Content-MD5 did not match md5 of file data expected [%s] received [%s] size %d", expectedChecksum, pu.ContentMd5, len(pu.UncompressedData))
 			return
+		}
+	}
+
+	if md5sum, found := pu.PairMap[PairNamePrefix+"Md5"]; found {
+		if md5sum != pu.ContentMd5 {
+			glog.Errorf("PairMap-md5, md5sum:%s, pu.ContentMd5:%s, URI:%s", md5sum, pu.ContentMd5, r.RequestURI)
+		}
+	}
+
+	if crc, found := pu.PairMap[PairNamePrefix+"Crc"]; found {
+		if crc != fmt.Sprintf("%x", NewCRC(pu.Data)) {
+			glog.Errorf("PairMap-crc, crc:%s, NewCRC(pu.Data):%s, URI:%s", crc, fmt.Sprintf("%x", NewCRC(pu.Data)), r.RequestURI)
 		}
 	}
 
