@@ -97,6 +97,18 @@ func ParseUpload(r *http.Request, sizeLimit int64, bytesBuffer *bytes.Buffer) (p
 		}
 	}
 
+	if md5sum, found := pu.PairMap[PairNamePrefix+"Md5"]; found {
+		if md5sum != pu.ContentMd5 {
+			glog.Errorf("PairMap-md5, md5sum:%s, pu.ContentMd5:%s, URI:%s", md5sum, pu.ContentMd5, r.RequestURI)
+		}
+	}
+
+	if crc, found := pu.PairMap[PairNamePrefix+"Crc"]; found {
+		if crc != fmt.Sprintf("%x", NewCRC(pu.Data)) {
+			glog.Errorf("PairMap-crc, crc:%s, NewCRC(pu.Data):%s, URI:%s", crc, fmt.Sprintf("%x", NewCRC(pu.Data)), r.RequestURI)
+		}
+	}
+
 	return
 }
 
