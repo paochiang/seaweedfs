@@ -28,6 +28,7 @@ type UploadOption struct {
 	MimeType          string
 	PairMap           map[string]string
 	Jwt               security.EncodedJwt
+	Md5               string
 }
 
 type UploadResult struct {
@@ -183,6 +184,7 @@ func doUploadData(data []byte, option *UploadOption) (uploadResult *UploadResult
 			MimeType:          "",
 			PairMap:           nil,
 			Jwt:               option.Jwt,
+			Md5:               option.Md5,
 		})
 		if uploadResult == nil {
 			return
@@ -204,6 +206,7 @@ func doUploadData(data []byte, option *UploadOption) (uploadResult *UploadResult
 			MimeType:          option.MimeType,
 			PairMap:           option.PairMap,
 			Jwt:               option.Jwt,
+			Md5:               option.Md5,
 		})
 		if uploadResult == nil {
 			return
@@ -233,6 +236,9 @@ func upload_content(fillBufferFunction func(w io.Writer) error, originalDataSize
 	}
 	if option.IsInputCompressed {
 		h.Set("Content-Encoding", "gzip")
+	}
+	if option.Md5 != "" {
+		h.Set("Content-MD5", option.Md5)
 	}
 
 	file_writer, cp_err := body_writer.CreatePart(h)
