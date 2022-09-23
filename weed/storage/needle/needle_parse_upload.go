@@ -92,6 +92,7 @@ func ParseUpload(r *http.Request, sizeLimit int64, bytesBuffer *bytes.Buffer) (p
 	pu.ContentMd5 = base64.StdEncoding.EncodeToString(h.Sum(nil))
 	if expectedChecksum := r.Header.Get("Content-MD5"); expectedChecksum != "" {
 		if expectedChecksum != pu.ContentMd5 {
+			glog.Errorf("inconsistent-md5, expected:%s, received:%s", expectedChecksum, pu.ContentMd5)
 			e = fmt.Errorf("Content-MD5 did not match md5 of file data expected [%s] received [%s] size %d", expectedChecksum, pu.ContentMd5, len(pu.UncompressedData))
 			return
 		}
