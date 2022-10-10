@@ -6,12 +6,14 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/hanwen/go-fuse/v2/fuse"
 	"google.golang.org/grpc"
 
+	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/seaweedfs/seaweedfs/weed/filer"
 	"github.com/seaweedfs/seaweedfs/weed/mount/meta_cache"
 	"github.com/seaweedfs/seaweedfs/weed/pb"
@@ -22,8 +24,6 @@ import (
 	"github.com/seaweedfs/seaweedfs/weed/util/chunk_cache"
 	"github.com/seaweedfs/seaweedfs/weed/util/grace"
 	"github.com/seaweedfs/seaweedfs/weed/wdclient"
-
-	"github.com/hanwen/go-fuse/v2/fs"
 )
 
 type Option struct {
@@ -114,8 +114,9 @@ func NewSeaweedFileSystem(option *Option) *WFS {
 	return wfs
 }
 
-func (wfs *WFS) StartBackgroundTasks(disableSubscribe bool) {
-	if !disableSubscribe {
+func (wfs *WFS) StartBackgroundTasks(disableSubscribe bool, dstDir string) {
+	//pavo-agent组件开启订阅。其他的请阅默认会被关闭。TODO后续移除直接使用internal-storage路径做判断
+	if !disableSubscribe && strings.HasSuffix(strings.TrimSpace(dstDir), "internal-storage") {
 		startTime := time.Now()
 		go meta_cache.SubscribeMetaEvents(wfs.metaCache, wfs.signature, wfs, wfs.option.FilerMountRootPath, startTime.UnixNano())
 	}
