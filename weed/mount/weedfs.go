@@ -18,6 +18,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/hanwen/go-fuse/v2/fs"
@@ -111,8 +112,9 @@ func NewSeaweedFileSystem(option *Option) *WFS {
 	return wfs
 }
 
-func (wfs *WFS) StartBackgroundTasks(disableSubscribe bool) {
-	if !disableSubscribe {
+func (wfs *WFS) StartBackgroundTasks(disableSubscribe bool, dstDir string) {
+	//pavo-agent组件开启订阅。其他的请阅默认会被关闭。TODO后续移除直接使用internal-storage路径做判断
+	if !disableSubscribe && strings.HasSuffix(strings.TrimSpace(dstDir), "internal-storage") {
 		startTime := time.Now()
 		go meta_cache.SubscribeMetaEvents(wfs.metaCache, wfs.signature, wfs, wfs.option.FilerMountRootPath, startTime.UnixNano())
 	}
