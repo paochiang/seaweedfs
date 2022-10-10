@@ -31,6 +31,7 @@ type MountOptions struct {
 	debugPort          *int
 	localSocket        *string
 	disableXAttr       *bool
+	disableSubscribe   *bool
 }
 
 var (
@@ -67,6 +68,7 @@ func init() {
 	mountOptions.debugPort = cmdMount.Flag.Int("debug.port", 6061, "http port for debugging")
 	mountOptions.localSocket = cmdMount.Flag.String("localSocket", "", "default to /tmp/seaweedfs-mount-<mount_dir_hash>.sock")
 	mountOptions.disableXAttr = cmdMount.Flag.Bool("disableXAttr", false, "disable xattr")
+	mountOptions.disableSubscribe = cmdMount.Flag.Bool("disableSubscribe", false, "disable meta Subscribe")
 
 	mountCpuProfile = cmdMount.Flag.String("cpuprofile", "", "cpu profile output file")
 	mountMemProfile = cmdMount.Flag.String("memprofile", "", "memory profile output file")
