@@ -6,6 +6,7 @@ import (
 	"github.com/seaweedfs/seaweedfs/weed/util/mem"
 	"github.com/seaweedfs/seaweedfs/weed/wdclient"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -19,18 +20,18 @@ type ReaderCache struct {
 
 type SingleChunkCacher struct {
 	sync.Mutex
-	cond           *sync.Cond
-	parent         *ReaderCache
-	chunkFileId    string
-	data           []byte
-	err            error
-	cipherKey      []byte
-	isGzipped      bool
-	chunkSize      int
-	shouldCache    bool
-	wg             sync.WaitGroup
-	cacheStartedCh chan struct{}
-	completedTime  time.Time
+	cond             *sync.Cond
+	parent           *ReaderCache
+	chunkFileId      string
+	data             []byte
+	err              error
+	cipherKey        []byte
+	isGzipped        bool
+	chunkSize        int
+	shouldCache      bool
+	wg               sync.WaitGroup
+	cacheStartedCh   chan struct{}
+	completedTimeNew int64
 }
 
 func newReaderCache(limit int, chunkCache chunk_cache.ChunkCache, lookupFileIdFn wdclient.LookupFileIdFunctionType) *ReaderCache {
@@ -50,13 +51,17 @@ func (rc *ReaderCache) MaybeCache(chunkViews []*ChunkView) {
 	rc.Lock()
 	defer rc.Unlock()
 
+	if len(rc.downloaders) >= rc.limit {
+		return
+	}
+
 	for _, chunkView := range chunkViews {
 		if _, found := rc.downloaders[chunkView.FileId]; found {
 			continue
 		}
 
 		if len(rc.downloaders) >= rc.limit {
-			// if still no slots, return
+			// abort when slots are filled
 			return
 		}
 
@@ -74,26 +79,27 @@ func (rc *ReaderCache) MaybeCache(chunkViews []*ChunkView) {
 
 func (rc *ReaderCache) ReadChunkAt(buffer []byte, fileId string, cipherKey []byte, isGzipped bool, offset int64, chunkSize int, shouldCache bool) (int, error) {
 	rc.Lock()
-	defer rc.Unlock()
+
 	if cacher, found := rc.downloaders[fileId]; found {
 		if n, err := cacher.readChunkAt(buffer, offset); n != 0 && err == nil {
+			rc.Unlock()
 			return n, err
 		}
 	}
 	if shouldCache || rc.lookupFileIdFn == nil {
 		n, err := rc.chunkCache.ReadChunkAt(buffer, fileId, uint64(offset))
 		if n > 0 {
+			rc.Unlock()
 			return n, err
 		}
 	}
 
 	if len(rc.downloaders) >= rc.limit {
-		oldestFid, oldestTime := "", time.Now()
+		oldestFid, oldestTime := "", time.Now().Unix()
 		for fid, downloader := range rc.downloaders {
-			if !downloader.completedTime.IsZero() {
-				if downloader.completedTime.Before(oldestTime) {
-					oldestFid, oldestTime = fid, downloader.completedTime
-				}
+			completedTime := atomic.LoadInt64(&downloader.completedTimeNew)
+			if completedTime > 0 && completedTime < oldestTime {
+				oldestFid, oldestTime = fid, completedTime
 			}
 		}
 		if oldestFid != "" {
@@ -109,6 +115,7 @@ func (rc *ReaderCache) ReadChunkAt(buffer []byte, fileId string, cipherKey []byt
 	go cacher.startCaching()
 	<-cacher.cacheStartedCh
 	rc.downloaders[fileId] = cacher
+	rc.Unlock()
 
 	return cacher.readChunkAt(buffer, offset)
 }
@@ -171,7 +178,7 @@ func (s *SingleChunkCacher) startCaching() {
 	if s.shouldCache {
 		s.parent.chunkCache.SetChunk(s.chunkFileId, s.data)
 	}
-	s.completedTime = time.Now()
+	atomic.StoreInt64(&s.completedTimeNew, time.Now().Unix())
 
 	return
 }
