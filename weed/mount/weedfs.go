@@ -19,6 +19,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/hanwen/go-fuse/v2/fs"
@@ -27,7 +28,7 @@ import (
 type Option struct {
 	MountDirectory     string
 	FilerAddresses     []pb.ServerAddress
-	filerIndex         int
+	filerIndex         int32
 	GrpcDialOption     grpc.DialOption
 	FilerMountRootPath string
 	Collection         string
@@ -87,7 +88,7 @@ func NewSeaweedFileSystem(option *Option) *WFS {
 		dhmap:         NewDirectoryHandleToInode(),
 	}
 
-	wfs.option.filerIndex = rand.Intn(len(option.FilerAddresses))
+	wfs.option.filerIndex = int32(rand.Intn(len(option.FilerAddresses)))
 	wfs.option.setupUniqueCacheDirectory()
 	if option.CacheSizeMB > 0 {
 		wfs.chunkCache = chunk_cache.NewTieredChunkCache(256, option.getUniqueCacheDir(), option.CacheSizeMB, 1024*1024)
@@ -186,7 +187,8 @@ func (wfs *WFS) LookupFn() wdclient.LookupFileIdFunctionType {
 }
 
 func (wfs *WFS) getCurrentFiler() pb.ServerAddress {
-	return wfs.option.FilerAddresses[wfs.option.filerIndex]
+	i := atomic.LoadInt32(&wfs.option.filerIndex)
+	return wfs.option.FilerAddresses[i]
 }
 
 func (option *Option) setupUniqueCacheDirectory() {
