@@ -37,6 +37,9 @@ func (wfs *WFS) Read(cancel <-chan struct{}, in *fuse.ReadIn, buff []byte) (fuse
 		return nil, fuse.ENOENT
 	}
 
+	fh.entryLock.Lock()
+	defer fh.entryLock.Unlock()
+
 	offset := int64(in.Offset)
 	fh.lockForRead(offset, len(buff))
 	defer fh.unlockForRead(offset, len(buff))
