@@ -2,12 +2,13 @@ package filer
 
 import (
 	"fmt"
-	"github.com/seaweedfs/seaweedfs/weed/util/chunk_cache"
-	"github.com/seaweedfs/seaweedfs/weed/util/mem"
-	"github.com/seaweedfs/seaweedfs/weed/wdclient"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/seaweedfs/seaweedfs/weed/util/chunk_cache"
+	"github.com/seaweedfs/seaweedfs/weed/util/mem"
+	"github.com/seaweedfs/seaweedfs/weed/wdclient"
 )
 
 type ReaderCache struct {
@@ -20,7 +21,6 @@ type ReaderCache struct {
 
 type SingleChunkCacher struct {
 	sync.Mutex
-	cond             *sync.Cond
 	parent           *ReaderCache
 	chunkFileId      string
 	data             []byte
@@ -94,6 +94,7 @@ func (rc *ReaderCache) ReadChunkAt(buffer []byte, fileId string, cipherKey []byt
 		}
 	}
 
+	// clean up old downloaders
 	if len(rc.downloaders) >= rc.limit {
 		oldestFid, oldestTime := "", time.Now().UnixNano()
 		for fid, downloader := range rc.downloaders {
@@ -184,6 +185,7 @@ func (s *SingleChunkCacher) startCaching() {
 }
 
 func (s *SingleChunkCacher) destroy() {
+	// wait for all reads to finish before destroying the data
 	s.wg.Wait()
 	s.Lock()
 	defer s.Unlock()
@@ -191,8 +193,8 @@ func (s *SingleChunkCacher) destroy() {
 	if s.data != nil {
 		mem.Free(s.data)
 		s.data = nil
+		close(s.cacheStartedCh)
 	}
-	close(s.cacheStartedCh)
 }
 
 func (s *SingleChunkCacher) readChunkAt(buf []byte, offset int64) (int, error) {
