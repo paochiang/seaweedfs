@@ -153,6 +153,8 @@ func newSingleChunkCacher(parent *ReaderCache, fileId string, cipherKey []byte, 
 	}
 }
 
+var count int
+
 func (s *SingleChunkCacher) startCaching() {
 	s.wg.Add(1)
 	defer s.wg.Done()
@@ -161,6 +163,12 @@ func (s *SingleChunkCacher) startCaching() {
 
 	s.cacheStartedCh <- struct{}{} // means this has been started
 
+	count++
+	if count%3 == 0 {
+		fmt.Println("设置error, count:", count)
+		s.err = fmt.Errorf("手动测试，设置error, count:%d", count)
+		return
+	}
 	urlStrings, err := s.parent.lookupFileIdFn(s.chunkFileId)
 	if err != nil {
 		s.err = fmt.Errorf("operation LookupFileId %s failed, err: %v", s.chunkFileId, err)
