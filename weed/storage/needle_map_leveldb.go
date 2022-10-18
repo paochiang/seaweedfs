@@ -19,7 +19,7 @@ import (
 	. "github.com/seaweedfs/seaweedfs/weed/storage/types"
 )
 
-//mark it every watermarkBatchSize operations
+// mark it every watermarkBatchSize operations
 const watermarkBatchSize = 10000
 
 var watermarkKey = []byte("idx_entry_watermark")
@@ -165,7 +165,7 @@ func getWatermark(db *leveldb.DB) uint64 {
 }
 
 func setWatermark(db *leveldb.DB, watermark uint64) error {
-	glog.V(1).Infof("set watermark %d", watermark)
+	glog.V(3).Infof("set watermark %d", watermark)
 	var wmBytes = make([]byte, 8)
 	util.Uint64toBytes(wmBytes, watermark)
 	if err := db.Put(watermarkKey, wmBytes, nil); err != nil {
