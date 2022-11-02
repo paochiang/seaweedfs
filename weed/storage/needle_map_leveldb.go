@@ -47,6 +47,7 @@ func NewLevelDbNeedleMap(dbFileName string, indexFile *os.File, opts *opt.Option
 	glog.V(1).Infof("Opening %s...", dbFileName)
 
 	if m.db, err = leveldb.OpenFile(dbFileName, opts); err != nil {
+		glog.V(0).Infof("leveldb.OpenFile error, %s, err:%v", dbFileName, err)
 		if errors.IsCorrupted(err) {
 			m.db, err = leveldb.RecoverFile(dbFileName, opts)
 		}
@@ -89,6 +90,7 @@ func isLevelDbFresh(dbFileName string, indexFile *os.File) bool {
 
 func generateLevelDbFile(dbFileName string, indexFile *os.File) error {
 	db, err := leveldb.OpenFile(dbFileName, nil)
+	glog.V(0).Infof("generateLevelDbFile %s, leveldb.OpenFile finished", dbFileName)
 	if err != nil {
 		return err
 	}
@@ -148,6 +150,7 @@ func (m *LevelDbNeedleMap) Put(key NeedleId, offset Offset, size Size) error {
 }
 
 func getWatermark(db *leveldb.DB) uint64 {
+	glog.V(0).Infof("getWatermark, db.Get started")
 	data, err := db.Get(watermarkKey, nil)
 	if err != nil || len(data) != 8 {
 		glog.Warningf("get watermark from db error: %v, %d", err, len(data))
