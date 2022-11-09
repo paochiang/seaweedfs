@@ -94,7 +94,7 @@ func NewMasterServer(r *mux.Router, option *MasterOption, peers map[string]pb.Se
 	v.SetDefault("master.volume_growth.copy_2", 6)
 	v.SetDefault("master.volume_growth.copy_3", 3)
 	v.SetDefault("master.volume_growth.copy_other", 1)
-	v.SetDefault("master.volume_growth.threshold", 0.9)
+	v.SetDefault("master.volume_growth.threshold", 0.5)
 
 	var preallocateSize int64
 	if option.VolumePreallocate {
