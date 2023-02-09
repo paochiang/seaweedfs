@@ -14,7 +14,7 @@ import (
 	. "github.com/seaweedfs/seaweedfs/weed/storage/types"
 )
 
-//This map uses in memory level db
+// This map uses in memory level db
 type MemDb struct {
 	db *leveldb.DB
 }
@@ -86,7 +86,10 @@ func (cm *MemDb) SaveToIdx(idxName string) (ret error) {
 	if err != nil {
 		return
 	}
-	defer idxFile.Close()
+	defer func() {
+		idxFile.Sync()
+		idxFile.Close()
+	}()
 
 	return cm.AscendingVisit(func(value NeedleValue) error {
 		if value.Offset.IsZero() || value.Size.IsDeleted() {

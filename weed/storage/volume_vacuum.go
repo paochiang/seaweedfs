@@ -267,7 +267,10 @@ func (v *Volume) makeupDiff(newDatFileName, newIdxFileName, oldDatFileName, oldI
 	if idx, err = os.OpenFile(newIdxFileName, os.O_RDWR, 0644); err != nil {
 		return fmt.Errorf("open idx file %s failed: %v", newIdxFileName, err)
 	}
-	defer idx.Close()
+	defer func() {
+		idx.Sync()
+		idx.Close()
+	}()
 
 	var newDatCompactRevision uint16
 	newDatCompactRevision, err = fetchCompactRevisionFromDatFile(dstDatBackend)
