@@ -10,7 +10,7 @@ import (
 	"github.com/seaweedfs/seaweedfs/weed/util"
 )
 
-func EnsureVisited(mc *MetaCache, client filer_pb.FilerClient, dirPath util.FullPath) error {
+func EnsureVisited(mc *MetaCache, client filer_pb.FilerClient, dirPath util.FullPath, refresh bool) error {
 
 	currentPath := dirPath
 
@@ -22,7 +22,7 @@ func EnsureVisited(mc *MetaCache, client filer_pb.FilerClient, dirPath util.Full
 			return nil
 		}
 
-		if err := doEnsureVisited(mc, client, currentPath); err != nil {
+		if err := doEnsureVisited(mc, client, currentPath, refresh); err != nil {
 			return err
 		}
 
@@ -39,17 +39,23 @@ func EnsureVisited(mc *MetaCache, client filer_pb.FilerClient, dirPath util.Full
 
 }
 
-func doEnsureVisited(mc *MetaCache, client filer_pb.FilerClient, path util.FullPath) error {
+func doEnsureVisited(mc *MetaCache, client filer_pb.FilerClient, path util.FullPath, refresh bool) error {
+
+	if refresh {
+		if err := mc.DeleteFolderChildren(context.Background(), path); err != nil {
+			glog.V(0).Infof("delete folder children %s: %v", path, err)
+			return err
+		}
+	}
 
 	glog.V(4).Infof("ReadDirAllEntries %s ...", path)
-
 	err := util.Retry("ReadDirAllEntries", func() error {
 		return filer_pb.ReadDirAllEntries(client, path, "", func(pbEntry *filer_pb.Entry, isLast bool) error {
 			entry := filer.FromPbEntry(string(path), pbEntry)
 			if IsHiddenSystemEntry(string(path), entry.Name()) {
 				return nil
 			}
-			if err := mc.doInsertEntry(context.Background(), entry); err != nil {
+			if err := mc.InsertEntry(context.Background(), entry); err != nil {
 				glog.V(0).Infof("read %s: %v", entry.FullPath, err)
 				return err
 			}

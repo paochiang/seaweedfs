@@ -2,12 +2,13 @@ package mount
 
 import (
 	"context"
+	"math"
+	"sync"
+
 	"github.com/hanwen/go-fuse/v2/fuse"
 	"github.com/seaweedfs/seaweedfs/weed/filer"
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"github.com/seaweedfs/seaweedfs/weed/mount/meta_cache"
-	"math"
-	"sync"
 )
 
 type DirectoryHandleId uint64
@@ -219,7 +220,7 @@ func (wfs *WFS) doReadDirectory(input *fuse.ReadIn, out *fuse.DirEntryList, isPl
 	}
 
 	var err error
-	if err = meta_cache.EnsureVisited(wfs.metaCache, wfs, dirPath); err != nil {
+	if err = meta_cache.EnsureVisited(wfs.metaCache, wfs, dirPath, !wfs.option.DisableSubscribe); err != nil {
 		glog.Errorf("dir ReadDirAll %s: %v", dirPath, err)
 		return fuse.EIO
 	}

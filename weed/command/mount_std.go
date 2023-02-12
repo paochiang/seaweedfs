@@ -6,6 +6,15 @@ package command
 import (
 	"context"
 	"fmt"
+	"net"
+	"net/http"
+	"os"
+	"os/user"
+	"runtime"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/hanwen/go-fuse/v2/fuse"
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"github.com/seaweedfs/seaweedfs/weed/mount"
@@ -17,14 +26,6 @@ import (
 	"github.com/seaweedfs/seaweedfs/weed/security"
 	"github.com/seaweedfs/seaweedfs/weed/storage/types"
 	"google.golang.org/grpc/reflection"
-	"net"
-	"net/http"
-	"os"
-	"os/user"
-	"runtime"
-	"strconv"
-	"strings"
-	"time"
 
 	"github.com/seaweedfs/seaweedfs/weed/util"
 	"github.com/seaweedfs/seaweedfs/weed/util/grace"
@@ -239,6 +240,7 @@ func RunMount(option *MountOptions, umask os.FileMode) bool {
 		Cipher:             cipher,
 		UidGidMapper:       uidGidMapper,
 		DisableXAttr:       *option.disableXAttr,
+		DisableSubscribe:   (*option.disableSubscribe || (!strings.HasSuffix(strings.TrimSpace(*option.dir), "internal-storage"))),
 	})
 
 	server, err := fuse.NewServer(seaweedFileSystem, dir, fuseMountOptions)

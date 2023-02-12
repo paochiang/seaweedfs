@@ -2,6 +2,14 @@ package mount
 
 import (
 	"context"
+	"math/rand"
+	"os"
+	"path"
+	"path/filepath"
+	"strings"
+	"sync/atomic"
+	"time"
+
 	"github.com/hanwen/go-fuse/v2/fuse"
 	"github.com/seaweedfs/seaweedfs/weed/filer"
 	"github.com/seaweedfs/seaweedfs/weed/mount/meta_cache"
@@ -14,13 +22,6 @@ import (
 	"github.com/seaweedfs/seaweedfs/weed/util/grace"
 	"github.com/seaweedfs/seaweedfs/weed/wdclient"
 	"google.golang.org/grpc"
-	"math/rand"
-	"os"
-	"path"
-	"path/filepath"
-	"strings"
-	"sync/atomic"
-	"time"
 
 	"github.com/hanwen/go-fuse/v2/fs"
 )
@@ -43,6 +44,7 @@ type Option struct {
 	Umask              os.FileMode
 	Quota              int64
 	DisableXAttr       bool
+	DisableSubscribe   bool
 
 	MountUid         uint32
 	MountGid         uint32
@@ -101,6 +103,8 @@ func NewSeaweedFileSystem(option *Option) *WFS {
 		}, func(path util.FullPath) bool {
 			return wfs.inodeToPath.IsChildrenCached(path)
 		}, func(filePath util.FullPath, entry *filer_pb.Entry) {
+		}, func() {
+			wfs.inodeToPath.UnmarkAllCached()
 		})
 	grace.OnInterrupt(func() {
 		wfs.metaCache.Shutdown()
@@ -118,6 +122,7 @@ func (wfs *WFS) StartBackgroundTasks(disableSubscribe bool, dstDir string) {
 	if !disableSubscribe && strings.HasSuffix(strings.TrimSpace(dstDir), "internal-storage") {
 		startTime := time.Now()
 		go meta_cache.SubscribeMetaEvents(wfs.metaCache, wfs.signature, wfs, wfs.option.FilerMountRootPath, startTime.UnixNano())
+		go wfs.metaCacheCheckRefresh()
 	}
 	go wfs.loopCheckQuota()
 }
@@ -169,7 +174,7 @@ func (wfs *WFS) maybeLoadEntry(fullpath util.FullPath) (*filer_pb.Entry, fuse.St
 	}
 
 	// read from async meta cache
-	meta_cache.EnsureVisited(wfs.metaCache, wfs, util.FullPath(dir))
+	meta_cache.EnsureVisited(wfs.metaCache, wfs, util.FullPath(dir), !wfs.option.DisableSubscribe)
 	cachedEntry, cacheErr := wfs.metaCache.FindEntry(context.Background(), fullpath)
 	if cacheErr == filer_pb.ErrNotFound {
 		return nil, fuse.ENOENT

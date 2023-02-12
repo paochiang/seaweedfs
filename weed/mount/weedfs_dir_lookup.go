@@ -2,6 +2,7 @@ package mount
 
 import (
 	"context"
+
 	"github.com/hanwen/go-fuse/v2/fuse"
 	"github.com/seaweedfs/seaweedfs/weed/filer"
 	"github.com/seaweedfs/seaweedfs/weed/glog"
@@ -27,7 +28,7 @@ func (wfs *WFS) Lookup(cancel <-chan struct{}, header *fuse.InHeader, name strin
 
 	fullFilePath := dirPath.Child(name)
 
-	visitErr := meta_cache.EnsureVisited(wfs.metaCache, wfs, dirPath)
+	visitErr := meta_cache.EnsureVisited(wfs.metaCache, wfs, dirPath, !wfs.option.DisableSubscribe)
 	if visitErr != nil {
 		glog.Errorf("dir Lookup %s: %v", dirPath, visitErr)
 		return fuse.EIO
