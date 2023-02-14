@@ -261,13 +261,17 @@ func (i *InodeToPath) Forget(inode, nlookup uint64, onForgetDir func(dir util.Fu
 			}
 			delete(i.inode2path, inode)
 		}
+		if path.isDirectory {
+			for _, p := range path.paths {
+				delete(i.pathCached, p)
+			}
+		}
 	}
 	i.Unlock()
 	if found {
 		if path.isDirectory && path.nlookup <= 0 && onForgetDir != nil {
 			for _, p := range path.paths {
 				onForgetDir(p)
-				delete(i.pathCached, p)
 			}
 		}
 	}
