@@ -2,7 +2,6 @@ package weed_server
 
 import (
 	"fmt"
-	"github.com/seaweedfs/seaweedfs/weed/stats"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -11,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/seaweedfs/seaweedfs/weed/stats"
 
 	"github.com/seaweedfs/seaweedfs/weed/cluster"
 	"github.com/seaweedfs/seaweedfs/weed/pb"
@@ -48,6 +49,7 @@ type MasterOption struct {
 	MetricsAddress          string
 	MetricsIntervalSec      int
 	IsFollower              bool
+	UncrowdedVolumeCount    int
 }
 
 type MasterServer struct {
@@ -55,7 +57,8 @@ type MasterServer struct {
 	option *MasterOption
 	guard  *security.Guard
 
-	preallocateSize int64
+	preallocateSize      int64
+	uncrowdedVolumeCount int64
 
 	Topo *topology.Topology
 	vg   *topology.VolumeGrowth
@@ -103,14 +106,15 @@ func NewMasterServer(r *mux.Router, option *MasterOption, peers map[string]pb.Se
 
 	grpcDialOption := security.LoadClientTLS(v, "grpc.master")
 	ms := &MasterServer{
-		option:          option,
-		preallocateSize: preallocateSize,
-		vgCh:            make(chan *topology.VolumeGrowRequest, 1<<6),
-		clientChans:     make(map[string]chan *master_pb.KeepConnectedResponse),
-		grpcDialOption:  grpcDialOption,
-		MasterClient:    wdclient.NewMasterClient(grpcDialOption, "", cluster.MasterType, option.Master, "", "", peers),
-		adminLocks:      NewAdminLocks(),
-		Cluster:         cluster.NewCluster(),
+		option:               option,
+		preallocateSize:      preallocateSize,
+		uncrowdedVolumeCount: int64(option.UncrowdedVolumeCount),
+		vgCh:                 make(chan *topology.VolumeGrowRequest, 1<<6),
+		clientChans:          make(map[string]chan *master_pb.KeepConnectedResponse),
+		grpcDialOption:       grpcDialOption,
+		MasterClient:         wdclient.NewMasterClient(grpcDialOption, "", cluster.MasterType, option.Master, "", "", peers),
+		adminLocks:           NewAdminLocks(),
+		Cluster:              cluster.NewCluster(),
 	}
 	ms.boundedLeaderChan = make(chan int, 16)
 

@@ -42,18 +42,19 @@ type MasterOptions struct {
 	volumeSizeLimitMB *uint
 	volumePreallocate *bool
 	// pulseSeconds       *int
-	defaultReplication *string
-	garbageThreshold   *float64
-	whiteList          *string
-	disableHttp        *bool
-	metricsAddress     *string
-	metricsIntervalSec *int
-	raftResumeState    *bool
-	metricsHttpPort    *int
-	heartbeatInterval  *time.Duration
-	electionTimeout    *time.Duration
-	raftHashicorp      *bool
-	raftBootstrap      *bool
+	defaultReplication   *string
+	garbageThreshold     *float64
+	whiteList            *string
+	disableHttp          *bool
+	metricsAddress       *string
+	metricsIntervalSec   *int
+	raftResumeState      *bool
+	metricsHttpPort      *int
+	heartbeatInterval    *time.Duration
+	electionTimeout      *time.Duration
+	raftHashicorp        *bool
+	raftBootstrap        *bool
+	uncrowdedVolumeCount *int
 }
 
 func init() {
@@ -79,6 +80,7 @@ func init() {
 	m.electionTimeout = cmdMaster.Flag.Duration("electionTimeout", 10*time.Second, "election timeout of master servers")
 	m.raftHashicorp = cmdMaster.Flag.Bool("raftHashicorp", false, "use hashicorp raft")
 	m.raftBootstrap = cmdMaster.Flag.Bool("raftBootstrap", false, "Whether to bootstrap the Raft cluster")
+	m.uncrowdedVolumeCount = cmdMaster.Flag.Int("uncrowdedVolumeCount", 3, "ensure there are enough uncrowded volume ")
 }
 
 var cmdMaster = &Command{
@@ -300,5 +302,6 @@ func (m *MasterOptions) toMasterOption(whiteList []string) *weed_server.MasterOp
 		DisableHttp:             *m.disableHttp,
 		MetricsAddress:          *m.metricsAddress,
 		MetricsIntervalSec:      *m.metricsIntervalSec,
+		UncrowdedVolumeCount:    *m.uncrowdedVolumeCount,
 	}
 }

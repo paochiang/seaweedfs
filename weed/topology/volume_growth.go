@@ -3,9 +3,10 @@ package topology
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/seaweedfs/seaweedfs/weed/pb/master_pb"
 	"math/rand"
 	"sync"
+
+	"github.com/seaweedfs/seaweedfs/weed/pb/master_pb"
 
 	"google.golang.org/grpc"
 
@@ -32,15 +33,16 @@ type VolumeGrowRequest struct {
 }
 
 type VolumeGrowOption struct {
-	Collection         string                        `json:"collection,omitempty"`
-	ReplicaPlacement   *super_block.ReplicaPlacement `json:"replication,omitempty"`
-	Ttl                *needle.TTL                   `json:"ttl,omitempty"`
-	DiskType           types.DiskType                `json:"disk,omitempty"`
-	Preallocate        int64                         `json:"preallocate,omitempty"`
-	DataCenter         string                        `json:"dataCenter,omitempty"`
-	Rack               string                        `json:"rack,omitempty"`
-	DataNode           string                        `json:"dataNode,omitempty"`
-	MemoryMapMaxSizeMb uint32                        `json:"memoryMapMaxSizeMb,omitempty"`
+	Collection           string                        `json:"collection,omitempty"`
+	ReplicaPlacement     *super_block.ReplicaPlacement `json:"replication,omitempty"`
+	Ttl                  *needle.TTL                   `json:"ttl,omitempty"`
+	DiskType             types.DiskType                `json:"disk,omitempty"`
+	Preallocate          int64                         `json:"preallocate,omitempty"`
+	DataCenter           string                        `json:"dataCenter,omitempty"`
+	Rack                 string                        `json:"rack,omitempty"`
+	DataNode             string                        `json:"dataNode,omitempty"`
+	MemoryMapMaxSizeMb   uint32                        `json:"memoryMapMaxSizeMb,omitempty"`
+	UncrowdedVolumeCount int64                         `json:"uncrowdedVolumeCount,omitempty"`
 }
 
 type VolumeGrowth struct {

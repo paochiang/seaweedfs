@@ -3,11 +3,12 @@ package weed_server
 import (
 	"context"
 	"fmt"
-	"github.com/seaweedfs/seaweedfs/weed/pb"
-	"github.com/seaweedfs/seaweedfs/weed/pb/master_pb"
 	"math/rand"
 	"net/http"
 	"strconv"
+
+	"github.com/seaweedfs/seaweedfs/weed/pb"
+	"github.com/seaweedfs/seaweedfs/weed/pb/master_pb"
 
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"github.com/seaweedfs/seaweedfs/weed/operation"
@@ -162,15 +163,16 @@ func (ms *MasterServer) getVolumeGrowOption(r *http.Request) (*topology.VolumeGr
 		}
 	}
 	volumeGrowOption := &topology.VolumeGrowOption{
-		Collection:         r.FormValue("collection"),
-		ReplicaPlacement:   replicaPlacement,
-		Ttl:                ttl,
-		DiskType:           diskType,
-		Preallocate:        preallocate,
-		DataCenter:         r.FormValue("dataCenter"),
-		Rack:               r.FormValue("rack"),
-		DataNode:           r.FormValue("dataNode"),
-		MemoryMapMaxSizeMb: memoryMapMaxSizeMb,
+		Collection:           r.FormValue("collection"),
+		ReplicaPlacement:     replicaPlacement,
+		Ttl:                  ttl,
+		DiskType:             diskType,
+		Preallocate:          preallocate,
+		DataCenter:           r.FormValue("dataCenter"),
+		Rack:                 r.FormValue("rack"),
+		DataNode:             r.FormValue("dataNode"),
+		MemoryMapMaxSizeMb:   memoryMapMaxSizeMb,
+		UncrowdedVolumeCount: ms.uncrowdedVolumeCount,
 	}
 	return volumeGrowOption, nil
 }
