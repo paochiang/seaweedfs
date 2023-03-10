@@ -104,7 +104,7 @@ func writeJson(w http.ResponseWriter, r *http.Request, httpStatus int, obj inter
 func writeJsonQuiet(w http.ResponseWriter, r *http.Request, httpStatus int, obj interface{}) {
 	if err := writeJson(w, r, httpStatus, obj); err != nil {
 		glog.V(0).Infof("error writing JSON status %s %d: %v", r.URL, httpStatus, err)
-		glog.V(1).Infof("JSON content: %+v", obj)
+		//glog.V(1).Infof("JSON content: %+v", obj)
 	}
 }
 func writeJsonError(w http.ResponseWriter, r *http.Request, httpStatus int, err error) {

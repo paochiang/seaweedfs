@@ -3,11 +3,12 @@ package topology
 import (
 	"errors"
 	"fmt"
-	"github.com/seaweedfs/seaweedfs/weed/storage/types"
 	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/seaweedfs/seaweedfs/weed/storage/types"
 
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"github.com/seaweedfs/seaweedfs/weed/storage"
@@ -337,8 +338,8 @@ func (vl *VolumeLayout) DoneGrowRequest() {
 
 func (vl *VolumeLayout) ShouldGrowVolumes(option *VolumeGrowOption) bool {
 	active, crowded := vl.GetActiveVolumeCount(option)
-	//glog.V(0).Infof("active volume: %d, high usage volume: %d\n", active, high)
-	return active <= crowded
+	// glog.V(4).Infof("active volume: %d, high usage volume: %d, UncrowdedVolumeCount: %d\n", active, crowded, option.UncrowdedVolumeCount)
+	return active <= crowded+int(option.UncrowdedVolumeCount)
 }
 
 func (vl *VolumeLayout) GetActiveVolumeCount(option *VolumeGrowOption) (active, crowded int) {

@@ -33,6 +33,7 @@ type ShellOptions struct {
 
 type CommandEnv struct {
 	env          map[string]string
+	ExtendEnv    map[string]string
 	MasterClient *wdclient.MasterClient
 	option       *ShellOptions
 	locker       *exclusive_locks.ExclusiveLocker
@@ -51,6 +52,7 @@ var (
 func NewCommandEnv(options *ShellOptions) *CommandEnv {
 	ce := &CommandEnv{
 		env:          make(map[string]string),
+		ExtendEnv:    make(map[string]string),
 		MasterClient: wdclient.NewMasterClient(options.GrpcDialOption, *options.FilerGroup, pb.AdminShellClient, "", "", "", pb.ServerAddresses(*options.Masters).ToAddressMap()),
 		option:       options,
 	}

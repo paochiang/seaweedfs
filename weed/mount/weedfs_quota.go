@@ -3,9 +3,14 @@ package mount
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"time"
+
+	"github.com/fsnotify/fsnotify"
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"github.com/seaweedfs/seaweedfs/weed/pb/filer_pb"
-	"time"
+	"github.com/seaweedfs/seaweedfs/weed/util"
 )
 
 func (wfs *WFS) loopCheckQuota() {
@@ -51,4 +56,46 @@ func (wfs *WFS) loopCheckQuota() {
 
 	}
 
+}
+
+func (wfs *WFS) metaCacheCheckRefresh() {
+	watchFile := filepath.Join(wfs.option.uniqueCacheDir, "refresh")
+	if !util.FileExists(watchFile) {
+		file, err := os.OpenFile(watchFile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+		if err != nil {
+			glog.Warningf("cannot create watcher file %s: %v", watchFile, err)
+			return
+		}
+		file.Close()
+	}
+
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		glog.Warningf("new watcher failed: %v", err)
+		return
+	}
+	defer watcher.Close()
+
+	err = watcher.Add(watchFile)
+	if err != nil {
+		glog.Warningf("new watcher add file failed: %v", err)
+		return
+	}
+	for {
+		select {
+		case event, ok := <-watcher.Events:
+			if !ok {
+				glog.V(0).Infof("event not ok")
+			} else {
+				glog.V(0).Infof("%s write: refresh metacache", event.Name)
+			}
+			wfs.metaCache.InvalidateAllDirectory()
+
+		case err, ok := <-watcher.Errors:
+			if !ok {
+				glog.V(0).Infof("write not ok")
+			}
+			glog.V(0).Infof("error: %s", err)
+		}
+	}
 }

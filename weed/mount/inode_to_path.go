@@ -1,11 +1,12 @@
 package mount
 
 import (
+	"sync"
+	"time"
+
 	"github.com/hanwen/go-fuse/v2/fuse"
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"github.com/seaweedfs/seaweedfs/weed/util"
-	"sync"
-	"time"
 )
 
 type InodeToPath struct {
@@ -13,12 +14,12 @@ type InodeToPath struct {
 	nextInodeId uint64
 	inode2path  map[uint64]*InodeEntry
 	path2inode  map[util.FullPath]uint64
+	pathCached  map[util.FullPath]bool
 }
 type InodeEntry struct {
-	paths            []util.FullPath
-	nlookup          uint64
-	isDirectory      bool
-	isChildrenCached bool
+	paths       []util.FullPath
+	nlookup     uint64
+	isDirectory bool
 }
 
 func (ie *InodeEntry) removeOnePath(p util.FullPath) bool {
@@ -47,8 +48,9 @@ func NewInodeToPath(root util.FullPath) *InodeToPath {
 	t := &InodeToPath{
 		inode2path: make(map[uint64]*InodeEntry),
 		path2inode: make(map[util.FullPath]uint64),
+		pathCached: make(map[util.FullPath]bool),
 	}
-	t.inode2path[1] = &InodeEntry{[]util.FullPath{root}, 1, true, false}
+	t.inode2path[1] = &InodeEntry{[]util.FullPath{root}, 1, true}
 	t.path2inode[root] = 1
 	return t
 }
@@ -92,9 +94,9 @@ func (i *InodeToPath) Lookup(path util.FullPath, unixTime int64, isDirectory boo
 		}
 	} else {
 		if !isLookup {
-			i.inode2path[inode] = &InodeEntry{[]util.FullPath{path}, 0, isDirectory, false}
+			i.inode2path[inode] = &InodeEntry{[]util.FullPath{path}, 0, isDirectory}
 		} else {
-			i.inode2path[inode] = &InodeEntry{[]util.FullPath{path}, 1, isDirectory, false}
+			i.inode2path[inode] = &InodeEntry{[]util.FullPath{path}, 1, isDirectory}
 		}
 	}
 
@@ -146,28 +148,22 @@ func (i *InodeToPath) HasPath(path util.FullPath) bool {
 }
 
 func (i *InodeToPath) MarkChildrenCached(fullpath util.FullPath) {
-	i.RLock()
-	defer i.RUnlock()
-	inode, found := i.path2inode[fullpath]
-	if !found {
-		glog.Fatalf("MarkChildrenCached not found inode %v", fullpath)
-	}
-	path, found := i.inode2path[inode]
-	path.isChildrenCached = true
+	i.Lock()
+	defer i.Unlock()
+	i.pathCached[fullpath] = true
+}
+
+func (i *InodeToPath) UnmarkAllCached() {
+	i.Lock()
+	defer i.Unlock()
+	i.pathCached = make(map[util.FullPath]bool)
 }
 
 func (i *InodeToPath) IsChildrenCached(fullpath util.FullPath) bool {
 	i.RLock()
 	defer i.RUnlock()
-	inode, found := i.path2inode[fullpath]
-	if !found {
-		return false
-	}
-	path, found := i.inode2path[inode]
-	if found {
-		return path.isChildrenCached
-	}
-	return false
+	_, found := i.pathCached[fullpath]
+	return found
 }
 
 func (i *InodeToPath) HasInode(inode uint64) bool {
@@ -191,10 +187,9 @@ func (i *InodeToPath) AddPath(inode uint64, path util.FullPath) {
 		ie.nlookup++
 	} else {
 		i.inode2path[inode] = &InodeEntry{
-			paths:            []util.FullPath{path},
-			nlookup:          1,
-			isDirectory:      false,
-			isChildrenCached: false,
+			paths:       []util.FullPath{path},
+			nlookup:     1,
+			isDirectory: false,
 		}
 	}
 }
@@ -239,13 +234,13 @@ func (i *InodeToPath) MovePath(sourcePath, targetPath util.FullPath) (sourceInod
 		// so no need to worry about their source inodes
 		return
 	}
+	delete(i.pathCached, sourcePath)
 	if entry, entryFound := i.inode2path[sourceInode]; entryFound {
 		for i, p := range entry.paths {
 			if p == sourcePath {
 				entry.paths[i] = targetPath
 			}
 		}
-		entry.isChildrenCached = false
 		if !targetFound {
 			entry.nlookup++
 		}
@@ -266,11 +261,16 @@ func (i *InodeToPath) Forget(inode, nlookup uint64, onForgetDir func(dir util.Fu
 			}
 			delete(i.inode2path, inode)
 		}
+		if path.isDirectory {
+			for _, p := range path.paths {
+				delete(i.pathCached, p)
+			}
+		}
 	}
 	i.Unlock()
+
 	if found {
 		if path.isDirectory && path.nlookup <= 0 && onForgetDir != nil {
-			path.isChildrenCached = false
 			for _, p := range path.paths {
 				onForgetDir(p)
 			}

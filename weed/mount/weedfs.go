@@ -102,6 +102,8 @@ func NewSeaweedFileSystem(option *Option) *WFS {
 		}, func(path util.FullPath) bool {
 			return wfs.inodeToPath.IsChildrenCached(path)
 		}, func(filePath util.FullPath, entry *filer_pb.Entry) {
+		}, func() {
+			wfs.inodeToPath.UnmarkAllCached()
 		})
 	grace.OnInterrupt(func() {
 		wfs.metaCache.Shutdown()
@@ -111,12 +113,16 @@ func NewSeaweedFileSystem(option *Option) *WFS {
 	if wfs.option.ConcurrentWriters > 0 {
 		wfs.concurrentWriters = util.NewLimitedConcurrentExecutor(wfs.option.ConcurrentWriters)
 	}
+
 	return wfs
 }
 
-func (wfs *WFS) StartBackgroundTasks() {
+func (wfs *WFS) StartBackgroundTasks(disableSubscribe bool) {
 	startTime := time.Now()
-	go meta_cache.SubscribeMetaEvents(wfs.metaCache, wfs.signature, wfs, wfs.option.FilerMountRootPath, startTime.UnixNano())
+	if !disableSubscribe {
+		go meta_cache.SubscribeMetaEvents(wfs.metaCache, wfs.signature, wfs, wfs.option.FilerMountRootPath, startTime.UnixNano())
+	}
+	go wfs.metaCacheCheckRefresh()
 	go wfs.loopCheckQuota()
 }
 

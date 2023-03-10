@@ -3,7 +3,10 @@ package storage
 import (
 	"fmt"
 	"os"
+	"path"
+	"strconv"
 
+	"github.com/seaweedfs/seaweedfs/weed/storage/needle_map"
 	"github.com/seaweedfs/seaweedfs/weed/storage/types"
 
 	"github.com/syndtr/goleveldb/leveldb/opt"
@@ -22,6 +25,54 @@ func loadVolumeWithoutIndex(dirname string, collection string, id needle.VolumeI
 	v.needleMapKind = needleMapKind
 	err = v.load(false, false, needleMapKind, 0)
 	return
+}
+
+type VolumeFileScanner4HotFix struct {
+	version needle.Version
+	nm      *needle_map.MemDb
+}
+
+func (scanner *VolumeFileScanner4HotFix) VisitSuperBlock(superBlock super_block.SuperBlock) error {
+	scanner.version = superBlock.Version
+	return nil
+
+}
+func (scanner *VolumeFileScanner4HotFix) ReadNeedleBody() bool {
+	return false
+}
+
+func (scanner *VolumeFileScanner4HotFix) VisitNeedle(n *needle.Needle, offset int64, needleHeader, needleBody []byte) error {
+	glog.V(2).Infof("key %d offset %d size %d disk_size %d compressed %v", n.Id, offset, n.Size, n.DiskSize(scanner.version), n.IsCompressed())
+	if n.Size.IsValid() {
+		pe := scanner.nm.Set(n.Id, types.ToOffset(offset), n.Size)
+		glog.V(2).Infof("saved %d with error %v", n.Size, pe)
+	} else {
+		glog.V(2).Infof("skipping deleted file ...")
+		return scanner.nm.Delete(n.Id)
+	}
+	return nil
+}
+
+func fixOneVolume(basepath string, collection string, vid needle.VolumeId) error {
+
+	indexFileName := path.Join(basepath, strconv.Itoa(int(vid))+".idx")
+
+	nm := needle_map.NewMemDb()
+	defer nm.Close()
+	scanner := &VolumeFileScanner4HotFix{
+		nm: nm,
+	}
+
+	if err := ScanVolumeFile(basepath, collection, vid, NeedleMapInMemory, scanner); err != nil {
+		return fmt.Errorf("scan .dat File: %v", err)
+	}
+
+	if err := nm.SaveToIdx(indexFileName); err != nil {
+		os.Remove(indexFileName)
+		return fmt.Errorf("save to .idx File: %v", err)
+	}
+
+	return nil
 }
 
 func (v *Volume) load(alsoLoadIndex bool, createDatIfMissing bool, needleMapKind NeedleMapKind, preallocate int64) (err error) {
@@ -109,8 +160,15 @@ func (v *Volume) load(alsoLoadIndex bool, createDatIfMissing bool, needleMapKind
 		}
 		// check volume idx files
 		if err := v.checkIdxFile(); err != nil {
-			glog.Fatalf("check volume idx file %s: %v", v.FileName(".idx"), err)
+			glog.V(0).Infof("check volume idx file %s: %v, try to fix it", v.FileName(".idx"), err)
+			if errFix := fixOneVolume(v.dir, v.Collection, v.Id); errFix != nil {
+				return fmt.Errorf("fix volume idx file %s: %v", v.FileName(".idx"), err)
+			}
+			if err := v.checkIdxFile(); err != nil {
+				return fmt.Errorf("check volume idx file again %s: %v", v.FileName(".idx"), err)
+			}
 		}
+
 		var indexFile *os.File
 		if v.noWriteOrDelete {
 			glog.V(0).Infoln("open to read file", v.FileName(".idx"))
@@ -123,9 +181,16 @@ func (v *Volume) load(alsoLoadIndex bool, createDatIfMissing bool, needleMapKind
 				return fmt.Errorf("cannot write Volume Index %s: %v", v.FileName(".idx"), err)
 			}
 		}
+
 		if v.lastAppendAtNs, err = CheckAndFixVolumeDataIntegrity(v, indexFile); err != nil {
-			v.noWriteOrDelete = true
-			glog.V(0).Infof("volumeDataIntegrityChecking failed %v", err)
+			glog.V(0).Infof("volumeDataIntegrityChecking failed %v, try to fix it", err)
+			if errFix := fixOneVolume(v.dir, v.Collection, v.Id); errFix != nil {
+				return fmt.Errorf("fix volume idx file %s: %v", v.FileName(".idx"), err)
+			}
+			if v.lastAppendAtNs, err = CheckAndFixVolumeDataIntegrity(v, indexFile); err != nil {
+				v.noWriteOrDelete = true
+				glog.V(0).Infof("volumeDataIntegrityChecking failed again %v", err)
+			}
 		}
 
 		if v.noWriteOrDelete || v.noWriteCanDelete {

@@ -50,6 +50,7 @@ type MasterOption struct {
 	MetricsAddress          string
 	MetricsIntervalSec      int
 	IsFollower              bool
+	UncrowdedVolumeCount    int
 }
 
 type MasterServer struct {
@@ -57,7 +58,8 @@ type MasterServer struct {
 	option *MasterOption
 	guard  *security.Guard
 
-	preallocateSize int64
+	preallocateSize      int64
+	uncrowdedVolumeCount int64
 
 	Topo *topology.Topology
 	vg   *topology.VolumeGrowth
@@ -96,7 +98,7 @@ func NewMasterServer(r *mux.Router, option *MasterOption, peers map[string]pb.Se
 	v.SetDefault("master.volume_growth.copy_2", 6)
 	v.SetDefault("master.volume_growth.copy_3", 3)
 	v.SetDefault("master.volume_growth.copy_other", 1)
-	v.SetDefault("master.volume_growth.threshold", 0.9)
+	v.SetDefault("master.volume_growth.threshold", 0.7)
 
 	var preallocateSize int64
 	if option.VolumePreallocate {
@@ -105,14 +107,15 @@ func NewMasterServer(r *mux.Router, option *MasterOption, peers map[string]pb.Se
 
 	grpcDialOption := security.LoadClientTLS(v, "grpc.master")
 	ms := &MasterServer{
-		option:          option,
-		preallocateSize: preallocateSize,
-		vgCh:            make(chan *topology.VolumeGrowRequest, 1<<6),
-		clientChans:     make(map[string]chan *master_pb.KeepConnectedResponse),
-		grpcDialOption:  grpcDialOption,
-		MasterClient:    wdclient.NewMasterClient(grpcDialOption, "", cluster.MasterType, option.Master, "", "", peers),
-		adminLocks:      NewAdminLocks(),
-		Cluster:         cluster.NewCluster(),
+		option:               option,
+		uncrowdedVolumeCount: int64(option.UncrowdedVolumeCount),
+		preallocateSize:      preallocateSize,
+		vgCh:                 make(chan *topology.VolumeGrowRequest, 1<<6),
+		clientChans:          make(map[string]chan *master_pb.KeepConnectedResponse),
+		grpcDialOption:       grpcDialOption,
+		MasterClient:         wdclient.NewMasterClient(grpcDialOption, "", cluster.MasterType, option.Master, "", "", peers),
+		adminLocks:           NewAdminLocks(),
+		Cluster:              cluster.NewCluster(),
 	}
 	ms.boundedLeaderChan = make(chan int, 16)
 
@@ -139,6 +142,8 @@ func NewMasterServer(r *mux.Router, option *MasterOption, peers map[string]pb.Se
 		r.HandleFunc("/vol/grow", ms.proxyToLeader(ms.guard.WhiteList(ms.volumeGrowHandler)))
 		r.HandleFunc("/vol/status", ms.proxyToLeader(ms.guard.WhiteList(ms.volumeStatusHandler)))
 		r.HandleFunc("/vol/vacuum", ms.proxyToLeader(ms.guard.WhiteList(ms.volumeVacuumHandler)))
+		r.HandleFunc("/vol/vacuum/enable", ms.proxyToLeader(ms.guard.WhiteList(ms.volumeVacuumEnableHandler)))
+		r.HandleFunc("/vol/vacuum/disable", ms.proxyToLeader(ms.guard.WhiteList(ms.volumeVacuumDisableHandler)))
 		r.HandleFunc("/submit", ms.guard.WhiteList(ms.submitFromMasterServerHandler))
 		/*
 			r.HandleFunc("/stats/health", ms.guard.WhiteList(statsHealthHandler))

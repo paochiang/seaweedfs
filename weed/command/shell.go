@@ -57,7 +57,7 @@ func runShell(command *Command, args []string) bool {
 	shellOptions.FilerAddress = pb.ServerAddress(*shellInitialFiler)
 	shellOptions.Directory = "/"
 
-	shell.RunShell(shellOptions)
+	shell.RunShell(shellOptions, args)
 
 	return true
 

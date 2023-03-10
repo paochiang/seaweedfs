@@ -69,6 +69,7 @@ type FilerOption struct {
 	ConcurrentUploadLimit int64
 	ShowUIDirectoryDelete bool
 	DownloadMaxBytesPs    int64
+	LogTime               int
 }
 
 type FilerServer struct {
@@ -175,6 +176,9 @@ func NewFilerServer(defaultMux, readonlyMux *http.ServeMux, option *FilerOption)
 	fs.filer.LoadFilerConf()
 
 	fs.filer.LoadRemoteStorageConfAndMapping()
+
+	//clean event log in time
+	go fs.filer.UpdateEvenLog(option.LogTime)
 
 	grace.OnInterrupt(func() {
 		fs.filer.Shutdown()

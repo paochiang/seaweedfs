@@ -3,6 +3,13 @@ package shell
 import (
 	"context"
 	"fmt"
+	"io"
+	"math/rand"
+	"os"
+	"path"
+	"regexp"
+	"strings"
+
 	"github.com/seaweedfs/seaweedfs/weed/cluster"
 	"github.com/seaweedfs/seaweedfs/weed/pb"
 	"github.com/seaweedfs/seaweedfs/weed/pb/filer_pb"
@@ -10,12 +17,6 @@ import (
 	"github.com/seaweedfs/seaweedfs/weed/util"
 	"github.com/seaweedfs/seaweedfs/weed/util/grace"
 	"golang.org/x/exp/slices"
-	"io"
-	"math/rand"
-	"os"
-	"path"
-	"regexp"
-	"strings"
 
 	"github.com/peterh/liner"
 )
@@ -25,7 +26,7 @@ var (
 	historyPath = path.Join(os.TempDir(), "weed-shell")
 )
 
-func RunShell(options ShellOptions) {
+func RunShell(options ShellOptions, args []string) {
 	slices.SortFunc(Commands, func(a, b command) bool {
 		return strings.Compare(a.Name(), b.Name()) < 0
 	})
@@ -92,20 +93,24 @@ https://cloud.seaweedfs.com/ui/%s
 		})
 	}
 
-	for {
-		cmd, err := line.Prompt("> ")
-		if err != nil {
-			if err != io.EOF {
-				fmt.Printf("%v\n", err)
-			}
-			return
-		}
-
-		for _, c := range util.StringSplit(cmd, ";") {
-			if processEachCmd(reg, c, commandEnv) {
+	if len(args) == 0 {
+		for {
+			cmd, err := line.Prompt("> ")
+			if err != nil {
+				if err != io.EOF {
+					fmt.Printf("%v\n", err)
+				}
 				return
 			}
+
+			for _, c := range util.StringSplit(cmd, ";") {
+				if processEachCmd(reg, c, commandEnv) {
+					return
+				}
+			}
 		}
+	} else {
+		processCmd(reg, args, commandEnv)
 	}
 }
 
@@ -114,6 +119,41 @@ func processEachCmd(reg *regexp.Regexp, cmd string, commandEnv *CommandEnv) bool
 
 	line.AppendHistory(cmd)
 
+	if len(cmds) == 0 {
+		return false
+	} else {
+
+		args := make([]string, len(cmds[1:]))
+
+		for i := range args {
+			args[i] = strings.Trim(string(cmds[1+i]), "\"'")
+		}
+
+		cmd := cmds[0]
+		if cmd == "help" || cmd == "?" {
+			printHelp(cmds)
+		} else if cmd == "exit" || cmd == "quit" {
+			return true
+		} else {
+			foundCommand := false
+			for _, c := range Commands {
+				if c.Name() == cmd || c.Name() == "fs."+cmd {
+					if err := c.Do(args, commandEnv, os.Stdout); err != nil {
+						fmt.Fprintf(os.Stderr, "error: %v\n", err)
+					}
+					foundCommand = true
+				}
+			}
+			if !foundCommand {
+				fmt.Fprintf(os.Stderr, "unknown command: %v\n", cmd)
+			}
+		}
+
+	}
+	return false
+}
+
+func processCmd(reg *regexp.Regexp, cmds []string, commandEnv *CommandEnv) bool {
 	if len(cmds) == 0 {
 		return false
 	} else {

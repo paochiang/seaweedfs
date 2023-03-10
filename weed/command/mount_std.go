@@ -254,7 +254,7 @@ func RunMount(option *MountOptions, umask os.FileMode) bool {
 	reflection.Register(grpcS)
 	go grpcS.Serve(montSocketListener)
 
-	seaweedFileSystem.StartBackgroundTasks()
+	seaweedFileSystem.StartBackgroundTasks(*option.disableSubscribe)
 
 	glog.V(0).Infof("mounted %s%s to %v", *option.filer, mountRoot, dir)
 	glog.V(0).Infof("This is SeaweedFS version %s %s %s", util.Version(), runtime.GOOS, runtime.GOARCH)

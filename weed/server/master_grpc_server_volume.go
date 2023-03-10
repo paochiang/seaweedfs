@@ -130,15 +130,16 @@ func (ms *MasterServer) Assign(ctx context.Context, req *master_pb.AssignRequest
 	diskType := types.ToDiskType(req.DiskType)
 
 	option := &topology.VolumeGrowOption{
-		Collection:         req.Collection,
-		ReplicaPlacement:   replicaPlacement,
-		Ttl:                ttl,
-		DiskType:           diskType,
-		Preallocate:        ms.preallocateSize,
-		DataCenter:         req.DataCenter,
-		Rack:               req.Rack,
-		DataNode:           req.DataNode,
-		MemoryMapMaxSizeMb: req.MemoryMapMaxSizeMb,
+		Collection:           req.Collection,
+		ReplicaPlacement:     replicaPlacement,
+		Ttl:                  ttl,
+		DiskType:             diskType,
+		Preallocate:          ms.preallocateSize,
+		DataCenter:           req.DataCenter,
+		Rack:                 req.Rack,
+		DataNode:             req.DataNode,
+		MemoryMapMaxSizeMb:   req.MemoryMapMaxSizeMb,
+		UncrowdedVolumeCount: ms.uncrowdedVolumeCount,
 	}
 
 	vl := ms.Topo.GetVolumeLayout(option.Collection, option.ReplicaPlacement, option.Ttl, option.DiskType)

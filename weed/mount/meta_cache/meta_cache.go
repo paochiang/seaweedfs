@@ -17,15 +17,16 @@ import (
 type MetaCache struct {
 	root       util.FullPath
 	localStore filer.VirtualFilerStore
-	// sync.RWMutex
-	uidGidMapper   *UidGidMapper
-	markCachedFn   func(fullpath util.FullPath)
-	isCachedFn     func(fullpath util.FullPath) bool
-	invalidateFunc func(fullpath util.FullPath, entry *filer_pb.Entry)
+	//sync.RWMutex
+	uidGidMapper           *UidGidMapper
+	markCachedFn           func(fullpath util.FullPath)
+	isCachedFn             func(fullpath util.FullPath) bool
+	invalidateFunc         func(fullpath util.FullPath, entry *filer_pb.Entry)
+	InvalidateAllDirectory func()
 }
 
 func NewMetaCache(dbFolder string, uidGidMapper *UidGidMapper, root util.FullPath,
-	markCachedFn func(path util.FullPath), isCachedFn func(path util.FullPath) bool, invalidateFunc func(util.FullPath, *filer_pb.Entry)) *MetaCache {
+	markCachedFn func(path util.FullPath), isCachedFn func(path util.FullPath) bool, invalidateFunc func(util.FullPath, *filer_pb.Entry), invalidateAllFunc func()) *MetaCache {
 	return &MetaCache{
 		root:         root,
 		localStore:   openMetaStore(dbFolder),
@@ -34,6 +35,9 @@ func NewMetaCache(dbFolder string, uidGidMapper *UidGidMapper, root util.FullPat
 		uidGidMapper: uidGidMapper,
 		invalidateFunc: func(fullpath util.FullPath, entry *filer_pb.Entry) {
 			invalidateFunc(fullpath, entry)
+		},
+		InvalidateAllDirectory: func() {
+			invalidateAllFunc()
 		},
 	}
 }

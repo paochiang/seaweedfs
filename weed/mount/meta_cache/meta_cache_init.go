@@ -41,6 +41,11 @@ func EnsureVisited(mc *MetaCache, client filer_pb.FilerClient, dirPath util.Full
 
 func doEnsureVisited(mc *MetaCache, client filer_pb.FilerClient, path util.FullPath) error {
 
+	if err := mc.DeleteFolderChildren(context.Background(), path); err != nil {
+		glog.V(0).Infof("delete folder children %s: %v", path, err)
+		return err
+	}
+
 	glog.V(4).Infof("ReadDirAllEntries %s ...", path)
 
 	err := util.Retry("ReadDirAllEntries", func() error {
@@ -49,7 +54,7 @@ func doEnsureVisited(mc *MetaCache, client filer_pb.FilerClient, path util.FullP
 			if IsHiddenSystemEntry(string(path), entry.Name()) {
 				return nil
 			}
-			if err := mc.doInsertEntry(context.Background(), entry); err != nil {
+			if err := mc.InsertEntry(context.Background(), entry); err != nil {
 				glog.V(0).Infof("read %s: %v", entry.FullPath, err)
 				return err
 			}

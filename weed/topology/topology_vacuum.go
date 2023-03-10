@@ -2,10 +2,14 @@ package topology
 
 import (
 	"context"
-	"github.com/seaweedfs/seaweedfs/weed/pb"
+	"fmt"
 	"io"
+	"math"
+	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/seaweedfs/seaweedfs/weed/pb"
 
 	"google.golang.org/grpc"
 
@@ -17,8 +21,9 @@ import (
 )
 
 func (t *Topology) batchVacuumVolumeCheck(grpcDialOption grpc.DialOption, vid needle.VolumeId,
-	locationlist *VolumeLocationList, garbageThreshold float64) (*VolumeLocationList, bool) {
+	locationlist *VolumeLocationList, garbageThreshold float64) (*VolumeLocationList, float64, bool) {
 	ch := make(chan int, locationlist.Length())
+	gch := make(chan float64, locationlist.Length())
 	errCount := int32(0)
 	for index, dn := range locationlist.list {
 		go func(index int, url pb.ServerAddress, vid needle.VolumeId) {
@@ -29,12 +34,15 @@ func (t *Topology) batchVacuumVolumeCheck(grpcDialOption grpc.DialOption, vid ne
 				if err != nil {
 					atomic.AddInt32(&errCount, 1)
 					ch <- -1
+					gch <- -1
 					return err
 				}
 				if resp.GarbageRatio >= garbageThreshold {
 					ch <- index
+					gch <- resp.GarbageRatio
 				} else {
 					ch <- -1
+					gch <- -1
 				}
 				return nil
 			})
@@ -55,10 +63,21 @@ func (t *Topology) batchVacuumVolumeCheck(grpcDialOption grpc.DialOption, vid ne
 				vacuumLocationList.list = append(vacuumLocationList.list, locationlist.list[index])
 			}
 		case <-waitTimeout.C:
-			return vacuumLocationList, false
+			return vacuumLocationList, 0, false
 		}
 	}
-	return vacuumLocationList, errCount == 0 && len(vacuumLocationList.list) > 0
+
+	var garbageRatio float64 = 0
+	for i := 0; i < locationlist.Length(); i++ {
+		select {
+		case gRation := <-gch:
+			garbageRatio = math.Max(gRation, garbageRatio)
+		case <-waitTimeout.C:
+			return vacuumLocationList, 0, false
+		}
+	}
+
+	return vacuumLocationList, garbageRatio, errCount == 0 && len(vacuumLocationList.list) > 0
 }
 
 func (t *Topology) batchVacuumVolumeCompact(grpcDialOption grpc.DialOption, vl *VolumeLayout, vid needle.VolumeId,
@@ -211,9 +230,115 @@ func (t *Topology) vacuumOneVolumeLayout(grpcDialOption grpc.DialOption, volumeL
 	}
 	volumeLayout.accessLock.RUnlock()
 
+	volumesVacuum := []needle.VolumeId{}
+	volumeLocations := make(map[needle.VolumeId]*VolumeLocationList)
+	volumeGarbageRatio := make(map[needle.VolumeId]float64)
 	for vid, locationList := range tmpMap {
-		t.vacuumOneVolumeId(grpcDialOption, volumeLayout, c, garbageThreshold, locationList, vid, preallocate)
+		volumeLayout.accessLock.RLock()
+		isReadOnly := volumeLayout.readonlyVolumes.IsTrue(vid)
+		isEnoughCopies := volumeLayout.enoughCopies(vid)
+		volumeLayout.accessLock.RUnlock()
+
+		if isReadOnly || !isEnoughCopies {
+			continue
+		}
+		if vacuumLocationList, ratio, needVacuum := t.batchVacuumVolumeCheck(grpcDialOption, vid, locationList, garbageThreshold); needVacuum {
+			volumesVacuum = append(volumesVacuum, vid)
+			volumeLocations[vid] = vacuumLocationList
+			volumeGarbageRatio[vid] = ratio
+		}
 	}
+
+	glog.V(1).Infof("Vacuum: %d volumes should be vacuumed for this loop", len(volumesVacuum))
+	count := len(volumesVacuum)
+
+	var wg sync.WaitGroup
+	var lock sync.Mutex
+	activeVolumes := make(map[needle.VolumeId]*VolumeLocationList)
+
+	for {
+		mapLength := len(volumeLocations)
+		if mapLength < 1 {
+			break
+		}
+
+		if t.isDisableVacuum {
+			glog.V(0).Infof("Vacuum interrupted by disableVacuum")
+			break
+		}
+
+		vid, err := getDiffVolume(volumeLocations, activeVolumes)
+		if err == nil {
+			lock.Lock()
+			activeVolumes[vid] = volumeLocations[vid].Copy()
+			lock.Unlock()
+			delete(volumeLocations, vid)
+			wg.Add(1)
+
+			go func(volumeId needle.VolumeId, list *VolumeLocationList) {
+				glog.V(1).Infof("Start vacuum volume: %d with garbage ratio:  %6.3f , garbageThreshold: %f  and  %d volumes left to be vacuumed", volumeId, volumeGarbageRatio[volumeId], garbageThreshold, count)
+				defer func() {
+					lock.Lock()
+					delete(activeVolumes, volumeId)
+					lock.Unlock()
+					wg.Done()
+				}()
+				lock.Lock()
+				count = count - 1
+				lock.Unlock()
+				t.vacuumOneVolumeId(grpcDialOption, volumeLayout, c, garbageThreshold, list, volumeId, preallocate)
+			}(vid, activeVolumes[vid])
+
+		} else {
+			oldLen := len(activeVolumes)
+			if oldLen >= 1 {
+				checkTime := time.Now()
+				for {
+					if checkTime.Add(2 * time.Minute).Before(time.Now()) {
+						//timeout
+						break
+					}
+					if len(activeVolumes) < oldLen {
+						break
+					} else {
+						time.Sleep(3 * time.Second)
+					}
+				}
+
+			}
+		}
+	}
+
+	wg.Wait()
+
+}
+
+func getDiffVolume(locations, active map[needle.VolumeId]*VolumeLocationList) (needle.VolumeId, error) {
+
+	//datanodes vacuuming
+	nodeMap := make(map[NodeId]bool)
+	for _, list := range active {
+		for _, node := range list.list {
+			nodeMap[node.id] = true
+		}
+	}
+
+	for vid, volumeLocations := range locations {
+
+		overlap := false
+		for _, node := range volumeLocations.list {
+			if _, ok := nodeMap[node.id]; ok {
+				overlap = true
+				break
+			}
+		}
+
+		if !overlap {
+			return vid, nil
+		}
+	}
+
+	return needle.VolumeId(0), fmt.Errorf("hasn't noverlaped volume")
 }
 
 func (t *Topology) vacuumOneVolumeId(grpcDialOption grpc.DialOption, volumeLayout *VolumeLayout, c *Collection, garbageThreshold float64, locationList *VolumeLocationList, vid needle.VolumeId, preallocate int64) {
@@ -226,8 +351,8 @@ func (t *Topology) vacuumOneVolumeId(grpcDialOption grpc.DialOption, volumeLayou
 		return
 	}
 
-	glog.V(2).Infof("check vacuum on collection:%s volume:%d", c.Name, vid)
-	if vacuumLocationList, needVacuum := t.batchVacuumVolumeCheck(
+	glog.V(1).Infof("check vacuum on collection:%s volume:%d", c.Name, vid)
+	if vacuumLocationList, _, needVacuum := t.batchVacuumVolumeCheck(
 		grpcDialOption, vid, locationList, garbageThreshold); needVacuum {
 		if t.batchVacuumVolumeCompact(grpcDialOption, volumeLayout, vid, vacuumLocationList, preallocate) {
 			t.batchVacuumVolumeCommit(grpcDialOption, volumeLayout, vid, vacuumLocationList)

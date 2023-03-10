@@ -20,7 +20,7 @@ func Retry(name string, job func() error) (err error) {
 			}
 			break
 		}
-		if strings.Contains(err.Error(), "transport") {
+		if strings.Contains(err.Error(), "transport") || strings.Contains(err.Error(), "may need retry new file id") || strings.Contains(err.Error(), "Not current leader") {
 			hasErr = true
 			glog.V(0).Infof("retry %s: err: %v", name, err)
 		} else {

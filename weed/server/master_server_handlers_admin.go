@@ -3,11 +3,12 @@ package weed_server
 import (
 	"context"
 	"fmt"
-	"github.com/seaweedfs/seaweedfs/weed/pb"
-	"github.com/seaweedfs/seaweedfs/weed/pb/master_pb"
 	"math/rand"
 	"net/http"
 	"strconv"
+
+	"github.com/seaweedfs/seaweedfs/weed/pb"
+	"github.com/seaweedfs/seaweedfs/weed/pb/master_pb"
 
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"github.com/seaweedfs/seaweedfs/weed/operation"
@@ -67,6 +68,16 @@ func (ms *MasterServer) volumeVacuumHandler(w http.ResponseWriter, r *http.Reque
 	// glog.Infoln("garbageThreshold =", gcThreshold)
 	ms.Topo.Vacuum(ms.grpcDialOption, gcThreshold, 0, "", ms.preallocateSize)
 	ms.dirStatusHandler(w, r)
+}
+
+func (ms *MasterServer) volumeVacuumEnableHandler(w http.ResponseWriter, r *http.Request) {
+	ms.Topo.EnableVacuum()
+	writeJson(w, r, http.StatusOK, nil)
+}
+
+func (ms *MasterServer) volumeVacuumDisableHandler(w http.ResponseWriter, r *http.Request) {
+	ms.Topo.DisableVacuum()
+	writeJson(w, r, http.StatusOK, nil)
 }
 
 func (ms *MasterServer) volumeGrowHandler(w http.ResponseWriter, r *http.Request) {
@@ -162,15 +173,16 @@ func (ms *MasterServer) getVolumeGrowOption(r *http.Request) (*topology.VolumeGr
 		}
 	}
 	volumeGrowOption := &topology.VolumeGrowOption{
-		Collection:         r.FormValue("collection"),
-		ReplicaPlacement:   replicaPlacement,
-		Ttl:                ttl,
-		DiskType:           diskType,
-		Preallocate:        preallocate,
-		DataCenter:         r.FormValue("dataCenter"),
-		Rack:               r.FormValue("rack"),
-		DataNode:           r.FormValue("dataNode"),
-		MemoryMapMaxSizeMb: memoryMapMaxSizeMb,
+		Collection:           r.FormValue("collection"),
+		ReplicaPlacement:     replicaPlacement,
+		Ttl:                  ttl,
+		DiskType:             diskType,
+		Preallocate:          preallocate,
+		DataCenter:           r.FormValue("dataCenter"),
+		Rack:                 r.FormValue("rack"),
+		DataNode:             r.FormValue("dataNode"),
+		MemoryMapMaxSizeMb:   memoryMapMaxSizeMb,
+		UncrowdedVolumeCount: ms.uncrowdedVolumeCount,
 	}
 	return volumeGrowOption, nil
 }

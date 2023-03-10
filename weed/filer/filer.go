@@ -3,6 +3,7 @@ package filer
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"sort"
 	"strings"
@@ -337,4 +338,56 @@ func (f *Filer) doListDirectoryEntries(ctx context.Context, p util.FullPath, sta
 func (f *Filer) Shutdown() {
 	f.LocalMetaLogBuffer.Shutdown()
 	f.Store.Shutdown()
+}
+
+func (f *Filer) UpdateEvenLog(n int) {
+	for {
+		currentTime := time.Now().UTC()
+		checkTime := currentTime.AddDate(0, 0, -n) //n days ago
+		glog.V(0).Infoln("checktime  ", checkTime)
+		dayEntries, _, listDayErr := f.ListDirectoryEntries(context.Background(), SystemLogDir, "", true, math.MaxInt32, "", "", "")
+		if listDayErr != nil {
+			glog.V(0).Infof("Event Log: fail to list logs by day: %v", listDayErr)
+			time.Sleep(5 * time.Minute)
+		}
+
+		stopDate := fmt.Sprintf("%04d-%02d-%02d", checkTime.Year(), checkTime.Month(), checkTime.Day())
+		stopHourMinute := fmt.Sprintf("%02d-%02d", checkTime.Hour(), checkTime.Minute())
+		for _, dayEntry := range dayEntries {
+			cmp := strings.Compare(dayEntry.Name(), stopDate)
+			if cmp > 0 {
+				continue
+			}
+
+			//for n days ago's logs
+			if cmp < 0 {
+				err := f.DeleteEntryMetaAndData(context.Background(), dayEntry.FullPath, true, false, true, false, nil)
+				if err != nil {
+					glog.V(0).Infof("Event Log: delete %s failed %v", dayEntry.FullPath, err)
+					time.Sleep(5 * time.Minute)
+				}
+			} else if cmp == 0 {
+				hourMinuteEntries, _, listHourMinuteErr := f.ListDirectoryEntries(context.Background(), util.NewFullPath(SystemLogDir, dayEntry.Name()), "", false, math.MaxInt32, "", "", "")
+				if listHourMinuteErr != nil {
+					glog.V(0).Infof("Even Log:  fail to list log %s by minute: %v", dayEntry.Name(), listHourMinuteErr)
+					time.Sleep(5 * time.Minute)
+				}
+
+				for _, hourMinuteEntry := range hourMinuteEntries {
+					hourMinute := util.FileNameBase(hourMinuteEntry.Name())
+					if strings.Compare(hourMinute, stopHourMinute) < 0 {
+						err := f.DeleteEntryMetaAndData(context.Background(), hourMinuteEntry.FullPath, true, false, true, false, nil)
+						if err != nil {
+							glog.V(0).Infof("Event Log: delete %s failed %v", hourMinuteEntry.FullPath, err)
+							time.Sleep(5 * time.Minute)
+						}
+					}
+				}
+			} else {
+				continue
+			}
+		}
+
+		time.Sleep(30 * time.Minute)
+	}
 }
