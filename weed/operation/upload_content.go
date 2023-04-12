@@ -2,13 +2,9 @@ package operation
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/seaweedfs/seaweedfs/weed/glog"
-	"github.com/seaweedfs/seaweedfs/weed/pb/filer_pb"
-	"github.com/seaweedfs/seaweedfs/weed/security"
-	"github.com/seaweedfs/seaweedfs/weed/stats"
-	"github.com/seaweedfs/seaweedfs/weed/util"
 	"io"
 	"mime"
 	"mime/multipart"
@@ -18,6 +14,12 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/seaweedfs/seaweedfs/weed/glog"
+	"github.com/seaweedfs/seaweedfs/weed/pb/filer_pb"
+	"github.com/seaweedfs/seaweedfs/weed/security"
+	"github.com/seaweedfs/seaweedfs/weed/stats"
+	"github.com/seaweedfs/seaweedfs/weed/util"
 )
 
 type UploadOption struct {
@@ -75,6 +77,47 @@ func init() {
 		MaxIdleConns:        1024,
 		MaxIdleConnsPerHost: 1024,
 	}}
+}
+
+// UploadWithRetry will retry both assigning volume request and uploading content
+// The option parameter does not need to specify UploadUrl and Jwt, which will come from assigning volume.
+func UploadWithRetry(filerClient filer_pb.FilerClient, assignRequest *filer_pb.AssignVolumeRequest, uploadOption *UploadOption, genFileUrlFn func(host, fileId string) string, reader io.Reader) (fileId, collection, replication string, uploadResult *UploadResult, err error, data []byte) {
+	doUploadFunc := func() error {
+
+		var host string
+		var auth security.EncodedJwt
+
+		// grpc assign volume
+		if grpcAssignErr := filerClient.WithFilerClient(false, func(client filer_pb.SeaweedFilerClient) error {
+			resp, assignErr := client.AssignVolume(context.Background(), assignRequest)
+			if assignErr != nil {
+				glog.V(0).Infof("assign volume failure %v: %v", assignRequest, assignErr)
+				return assignErr
+			}
+			if resp.Error != "" {
+				return fmt.Errorf("assign volume failure %v: %v", assignRequest, resp.Error)
+			}
+
+			fileId, auth = resp.FileId, security.EncodedJwt(resp.Auth)
+			loc := resp.Location
+			host = filerClient.AdjustedUrl(loc)
+			collection, replication = resp.Collection, resp.Replication
+
+			return nil
+		}); grpcAssignErr != nil {
+			return fmt.Errorf("filerGrpcAddress assign volume: %v", grpcAssignErr)
+		}
+
+		uploadOption.UploadUrl = genFileUrlFn(host, fileId)
+		uploadOption.Jwt = auth
+
+		var uploadErr error
+		uploadResult, uploadErr, data = doUpload(reader, uploadOption)
+		return uploadErr
+	}
+	err = util.Retry("uploadWithRetry", doUploadFunc)
+
+	return
 }
 
 var fileNameEscaper = strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\n", "")
