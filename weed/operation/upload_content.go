@@ -115,7 +115,7 @@ func UploadWithRetry(filerClient filer_pb.FilerClient, assignRequest *filer_pb.A
 		uploadResult, uploadErr, data = doUpload(reader, uploadOption)
 		return uploadErr
 	}
-	err = util.Retry("uploadWithRetry", doUploadFunc)
+	err = util.UploadRetry("uploadWithRetry", doUploadFunc)
 
 	return
 }
